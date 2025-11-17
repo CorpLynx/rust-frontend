@@ -4,6 +4,8 @@ use std::fs;
 
 mod app;
 mod config;
+mod conversation;
+mod markdown;
 
 use app::ChatApp;
 use config::AppConfig;
@@ -19,6 +21,19 @@ fn main() -> Result<()> {
     let log_dir = "logs";
     if !std::path::Path::new(log_dir).exists() {
         fs::create_dir_all(log_dir)?;
+    }
+
+    // Create conversations directory if it doesn't exist
+    let conversations_dir = "conversations";
+    if !std::path::Path::new(conversations_dir).exists() {
+        fs::create_dir_all(conversations_dir)?;
+    }
+
+    // Create metadata file if it doesn't exist
+    let metadata_path = format!("{}/metadata.json", conversations_dir);
+    if !std::path::Path::new(&metadata_path).exists() {
+        let empty_metadata = serde_json::json!({ "conversations": [] });
+        fs::write(&metadata_path, serde_json::to_string_pretty(&empty_metadata)?)?;
     }
 
     // Load configuration for window size

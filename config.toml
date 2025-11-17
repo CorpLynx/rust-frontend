@@ -1,10 +1,11 @@
 [app]
-window_title = "NEURAL INTERFACE v0.2.0"
+window_title = "Frontend build v0.2.0"
 window_width = 900
 window_height = 650
 
 [backend]
-url = "http://localhost:8000/generate"
+url = "http://localhost:11434"
+ollama_url = "http://localhost:11434"
 timeout_seconds = 30
 
 [ui]

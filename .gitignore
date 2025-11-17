@@ -17,6 +17,7 @@ logs/
 
 # Chat history (optional - remove if you want to track it)
 chat_history.json
+conversations/
 
 # OS
 .DS_Store

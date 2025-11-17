@@ -19,6 +19,7 @@ pub struct AppSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendSettings {
     pub url: String,
+    pub ollama_url: String,
     pub timeout_seconds: u64,
 }
 
@@ -41,6 +42,16 @@ impl AppConfig {
             .try_deserialize()
             .context("Failed to deserialize config")
     }
+
+    pub fn save(&self) -> Result<()> {
+        let toml_string = toml::to_string_pretty(self)
+            .context("Failed to serialize config to TOML")?;
+        
+        std::fs::write("config.toml", toml_string)
+            .context("Failed to write config.toml")?;
+        
+        Ok(())
+    }
 }
 
 impl Default for AppConfig {
@@ -52,7 +63,8 @@ impl Default for AppConfig {
                 window_height: 600.0,
             },
             backend: BackendSettings {
-                url: "http://localhost:8000/generate".to_string(),
+                url: "http://localhost:1234".to_string(),
+                ollama_url: "http://localhost:1234".to_string(),
                 timeout_seconds: 30,
             },
             ui: UISettings {
