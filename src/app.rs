@@ -1,4 +1,4 @@
-use crate::config::AppConfig;
+use crate::config::{AppConfig, ColorTheme};
 use crate::conversation::{Conversation, ConversationManager, ConversationMetadata};
 use crate::markdown::{parse_message, MessageSegment};
 use iced::{
@@ -70,6 +70,7 @@ pub enum Message {
     ToggleSettings,
     BackendUrlChanged(String),
     OllamaUrlChanged(String),
+    ThemeSelected(String),
     SaveSettings,
     // Conversation management
     NewConversation,
@@ -101,6 +102,9 @@ pub struct ChatApp {
     settings_open: bool,
     temp_backend_url: String,
     temp_ollama_url: String,
+    available_themes: Vec<String>,
+    temp_theme: String,
+    current_theme: ColorTheme,
     // Conversation management
     conversation_manager: ConversationManager,
     active_conversation_id: Option<String>,
@@ -111,6 +115,15 @@ pub struct ChatApp {
 
 impl ChatApp {
     fn create(config: AppConfig) -> Self {
+        let available_themes = vec![
+            "Hacker Green".to_string(),
+            "Cyber Blue".to_string(),
+            "Neon Purple".to_string(),
+            "Matrix Red".to_string(),
+        ];
+        
+        let current_theme = ColorTheme::from_string(&config.ui.theme);
+        
         Self {
             config,
             prompt_input: String::new(),
@@ -129,6 +142,9 @@ impl ChatApp {
             settings_open: false,
             temp_backend_url: String::new(),
             temp_ollama_url: String::new(),
+            available_themes: available_themes.clone(),
+            temp_theme: String::new(),
+            current_theme,
             conversation_manager: ConversationManager::new(),
             active_conversation_id: None,
             conversations: Vec::new(),
@@ -633,7 +649,7 @@ impl Application for ChatApp {
                 Command::none()
             }
             Message::ModelSelected(model) => {
-                info!("Model selected: {}", model);
+                info!("Model selected: {} (not creating new chat)", model);
                 self.selected_model = Some(model);
                 Command::none()
             }
@@ -643,6 +659,7 @@ impl Application for ChatApp {
                     // Load current values into temp fields
                     self.temp_backend_url = self.config.backend.url.clone();
                     self.temp_ollama_url = self.config.backend.ollama_url.clone();
+                    self.temp_theme = self.config.ui.theme.clone();
                 }
                 Command::none()
             }
@@ -654,12 +671,23 @@ impl Application for ChatApp {
                 self.temp_ollama_url = url;
                 Command::none()
             }
+            Message::ThemeSelected(theme) => {
+                self.temp_theme = theme;
+                Command::none()
+            }
             Message::SaveSettings => {
                 let ollama_changed = self.temp_ollama_url != self.config.backend.ollama_url;
+                let theme_changed = self.temp_theme != self.config.ui.theme;
                 
                 // Update config
                 self.config.backend.url = self.temp_backend_url.clone();
                 self.config.backend.ollama_url = self.temp_ollama_url.clone();
+                self.config.ui.theme = self.temp_theme.clone();
+                
+                // Update current theme if changed
+                if theme_changed {
+                    self.current_theme = ColorTheme::from_string(&self.temp_theme);
+                }
                 
                 // Save to file
                 match self.config.save() {
@@ -684,6 +712,7 @@ impl Application for ChatApp {
             }
             Message::NewConversation => {
                 // Create new conversation
+                info!("NewConversation message received - creating new chat");
                 let conversation = Conversation::with_timestamp_name(self.selected_model.clone());
                 self.active_conversation_id = Some(conversation.id.clone());
                 self.chat_history.clear();
@@ -729,11 +758,15 @@ impl Application for ChatApp {
                         info!("Loaded {} conversations", conversations.len());
                         self.conversations = conversations;
                         
-                        // Always start with a new conversation on startup
-                        let conversation = Conversation::with_timestamp_name(self.selected_model.clone());
-                        self.active_conversation_id = Some(conversation.id.clone());
-                        self.chat_history.clear();
-                        info!("Starting with new conversation: {}", conversation.id);
+                        // Only create new conversation if we don't have one active (startup only)
+                        if self.active_conversation_id.is_none() {
+                            let conversation = Conversation::with_timestamp_name(self.selected_model.clone());
+                            self.active_conversation_id = Some(conversation.id.clone());
+                            self.chat_history.clear();
+                            info!("Starting with new conversation: {}", conversation.id);
+                        } else {
+                            info!("Keeping existing active conversation");
+                        }
                     }
                     Err(e) => {
                         error!("Failed to load conversations: {}", e);
@@ -816,13 +849,16 @@ impl Application for ChatApp {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        // Dark mode only - hacker aesthetic colors
-        let text_color = Color::from_rgb(0.0, 1.0, 0.6); // Neon green
-        let muted_color = Color::from_rgb(0.0, 0.7, 0.5); // Dimmer green
+        // Get theme colors
+        let (pr, pg, pb) = self.current_theme.primary_color();
+        let (sr, sg, sb) = self.current_theme.secondary_color();
+        
+        let text_color = Color::from_rgb(pr, pg, pb); // Theme primary color
+        let muted_color = Color::from_rgb(sr, sg, sb); // Theme secondary color
 
         let chat_display: Element<_> = if self.chat_history.is_empty() {
             // ASCII art animation - rotating frames with glowing ONLINE text
-            let glow_color = Color::from_rgb(0.0, 1.0, 0.6); // Bright neon green
+            let glow_color = Color::from_rgb(pr, pg, pb); // Theme primary color
             
             let frames_top = vec![
                 "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
@@ -911,7 +947,7 @@ impl Application for ChatApp {
                             )
                             .on_press(Message::CopyCodeBlock(code.clone()))
                             .padding(4)
-                            .style(iced::theme::Button::Custom(Box::new(CodeCopyButtonStyle)));
+                            .style(iced::theme::Button::Custom(Box::new(CodeCopyButtonStyle::new(&self.current_theme))));
                             
                             let code_header = row![
                                 text(lang_label)
@@ -934,7 +970,7 @@ impl Application for ChatApp {
                             )
                             .padding(12)
                             .width(Length::Fill)
-                            .style(iced::theme::Container::Custom(Box::new(CodeBlockStyle)));
+                            .style(iced::theme::Container::Custom(Box::new(CodeBlockStyle::new(&self.current_theme))));
                             
                             message_content = message_content.push(code_block);
                             code_block_idx += 1;
@@ -948,7 +984,7 @@ impl Application for ChatApp {
                                         .font(iced::Font::MONOSPACE)
                                 )
                                 .padding(2)
-                                .style(iced::theme::Container::Custom(Box::new(InlineCodeStyle)))
+                                .style(iced::theme::Container::Custom(Box::new(InlineCodeStyle::new(&self.current_theme))))
                             );
                         }
                         MessageSegment::Bold(t) => {
@@ -1073,7 +1109,7 @@ impl Application for ChatApp {
                                 )
                                 .padding(12)
                                 .width(Length::Fill)
-                                .style(iced::theme::Container::Custom(Box::new(CodeBlockStyle)));
+                                .style(iced::theme::Container::Custom(Box::new(CodeBlockStyle::new(&self.current_theme))));
                                 
                                 streaming_content = streaming_content.push(code_block);
                             }
@@ -1086,7 +1122,7 @@ impl Application for ChatApp {
                                             .font(iced::Font::MONOSPACE)
                                     )
                                     .padding(2)
-                                    .style(iced::theme::Container::Custom(Box::new(InlineCodeStyle)))
+                                    .style(iced::theme::Container::Custom(Box::new(InlineCodeStyle::new(&self.current_theme))))
                                 );
                             }
                             MessageSegment::Bold(t) => {
@@ -1144,6 +1180,7 @@ impl Application for ChatApp {
                 .id(self.scroll_id.clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
+                .style(iced::theme::Scrollable::Custom(Box::new(CustomScrollbarStyle::new(&self.current_theme))))
                 .into()
         };
 
@@ -1172,7 +1209,7 @@ impl Application for ChatApp {
                 .on_press(Message::SendPrompt)
                 .padding(10)
                 .width(Length::Fixed(40.0))
-                .style(iced::theme::Button::Custom(Box::new(RoundedButtonStyle)))
+                .style(iced::theme::Button::Custom(Box::new(RoundedButtonStyle::new(&self.current_theme))))
         };
 
         // Responsive floating input box - centered and adapts to window size
@@ -1186,7 +1223,7 @@ impl Application for ChatApp {
                     .size(self.config.ui.font_size)
                     .width(Length::Fill)
                     .padding(14)
-                    .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle))),
+                    .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
                 action_button
             ]
             .spacing(10)
@@ -1221,7 +1258,7 @@ impl Application for ChatApp {
             Element::from(container(text("")).width(Length::Fill).height(Length::Shrink))
         };
 
-        let header_text_color = Color::from_rgb(0.0, 1.0, 0.6); // Neon green
+        let header_text_color = Color::from_rgb(pr, pg, pb); // Theme primary color
 
         // Burger menu button
         let burger_button = button(
@@ -1307,24 +1344,36 @@ impl Application for ChatApp {
             for conv in &self.conversations {
                 let is_active = self.active_conversation_id.as_ref() == Some(&conv.id);
                 
-                let conv_item = container(
-                    column![
+                // Delete button for this conversation
+                let delete_btn = button(text("×").size(self.config.ui.font_size + 2))
+                    .on_press(Message::DeleteConversation(conv.id.clone()))
+                    .padding(4)
+                    .style(iced::theme::Button::Text);
+                
+                let conv_content = column![
+                    row![
                         text(&conv.name)
                             .size(self.config.ui.font_size - 2)
-                            .style(iced::theme::Text::Color(if is_active { header_text_color } else { text_color })),
-                        text(&conv.preview)
-                            .size(self.config.ui.font_size - 4)
-                            .style(iced::theme::Text::Color(muted_color))
+                            .style(iced::theme::Text::Color(if is_active { header_text_color } else { text_color }))
+                            .width(Length::Fill),
+                        delete_btn
                     ]
-                    .spacing(4)
-                )
-                .padding(8)
-                .width(Length::Fill)
-                .style(if is_active {
-                    iced::theme::Container::Custom(Box::new(ActiveConversationStyle))
-                } else {
-                    iced::theme::Container::Custom(Box::new(ConversationItemStyle))
-                });
+                    .align_items(Alignment::Center)
+                    .spacing(4),
+                    text(&conv.preview)
+                        .size(self.config.ui.font_size - 4)
+                        .style(iced::theme::Text::Color(muted_color))
+                ]
+                .spacing(4);
+                
+                let conv_item = container(conv_content)
+                    .padding(8)
+                    .width(Length::Fill)
+                    .style(if is_active {
+                        iced::theme::Container::Custom(Box::new(ActiveConversationStyle))
+                    } else {
+                        iced::theme::Container::Custom(Box::new(ConversationItemStyle))
+                    });
 
                 let conv_button = button(conv_item)
                     .on_press(Message::LoadConversation(conv.id.clone()))
@@ -1338,6 +1387,7 @@ impl Application for ChatApp {
                 scrollable(conversations_column)
                     .width(Length::Fill)
                     .height(Length::Fill)
+                    .style(iced::theme::Scrollable::Custom(Box::new(CustomScrollbarStyle::new(&self.current_theme))))
             )
             .width(Length::Fixed(self.sidebar_width))
             .height(Length::Fill)
@@ -1375,7 +1425,7 @@ impl Application for ChatApp {
                             .on_input(Message::BackendUrlChanged)
                             .size(self.config.ui.font_size)
                             .padding(12)
-                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle))),
+                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
                     ]
                     .spacing(8),
                     column![
@@ -1386,7 +1436,25 @@ impl Application for ChatApp {
                             .on_input(Message::OllamaUrlChanged)
                             .size(self.config.ui.font_size)
                             .padding(12)
-                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle))),
+                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
+                    ]
+                    .spacing(8),
+                    column![
+                        text("Theme:")
+                            .size(self.config.ui.font_size - 2)
+                            .style(iced::theme::Text::Color(muted_color)),
+                        pick_list(
+                            &self.available_themes[..],
+                            Some(self.temp_theme.clone()),
+                            Message::ThemeSelected,
+                        )
+                        .placeholder("Select Theme")
+                        .width(Length::Fill)
+                        .padding(12)
+                        .style(iced::theme::PickList::Custom(
+                            std::rc::Rc::new(ModelSelectorStyle),
+                            std::rc::Rc::new(ModelSelectorMenuStyle),
+                        )),
                     ]
                     .spacing(8),
                     row![
@@ -1573,7 +1641,7 @@ impl iced::widget::container::StyleSheet for UserMessageStyle {
     }
 }
 
-// AI message style - darker, on the left
+// AI message style - darker blue background (fixed color)
 struct AIMessageStyle;
 
 impl iced::widget::container::StyleSheet for AIMessageStyle {
@@ -1610,37 +1678,52 @@ impl iced::widget::container::StyleSheet for HackerErrorStyle {
     }
 }
 
-struct HackerInputStyle;
+struct HackerInputStyle {
+    primary_color: (f32, f32, f32),
+    secondary_color: (f32, f32, f32),
+}
+
+impl HackerInputStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+            secondary_color: theme.secondary_color(),
+        }
+    }
+}
 
 impl iced::widget::text_input::StyleSheet for HackerInputStyle {
     type Style = iced::Theme;
 
     fn active(&self, _style: &Self::Style) -> iced::widget::text_input::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::text_input::Appearance {
             background: Background::Color(Color::from_rgba(0.08, 0.08, 0.12, 0.0)),
             border: Border {
-                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                color: Color::from_rgba(pr, pg, pb, 0.0),
                 width: 0.0,
                 radius: 8.0.into(),
             },
-            icon_color: Color::from_rgb(0.0, 1.0, 0.6),
+            icon_color: Color::from_rgb(pr, pg, pb),
         }
     }
 
     fn focused(&self, _style: &Self::Style) -> iced::widget::text_input::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::text_input::Appearance {
             background: Background::Color(Color::from_rgba(0.08, 0.08, 0.12, 0.0)),
             border: Border {
-                color: Color::from_rgba(0.0, 1.0, 0.6, 0.0),
+                color: Color::from_rgba(pr, pg, pb, 0.0),
                 width: 0.0,
                 radius: 8.0.into(),
             },
-            icon_color: Color::from_rgb(0.0, 1.0, 0.6),
+            icon_color: Color::from_rgb(pr, pg, pb),
         }
     }
 
     fn placeholder_color(&self, _style: &Self::Style) -> Color {
-        Color::from_rgba(0.0, 0.7, 0.5, 0.5)
+        let (sr, sg, sb) = self.secondary_color;
+        Color::from_rgba(sr, sg, sb, 0.5)
     }
 
     fn value_color(&self, _style: &Self::Style) -> Color {
@@ -1660,16 +1743,29 @@ impl iced::widget::text_input::StyleSheet for HackerInputStyle {
     }
 }
 
-struct RoundedButtonStyle;
+struct RoundedButtonStyle {
+    primary_color: (f32, f32, f32),
+    secondary_color: (f32, f32, f32),
+}
+
+impl RoundedButtonStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+            secondary_color: theme.secondary_color(),
+        }
+    }
+}
 
 impl iced::widget::button::StyleSheet for RoundedButtonStyle {
     type Style = iced::Theme;
 
     fn active(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (sr, sg, sb) = self.secondary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgb(0.0, 0.8, 1.0))),
+            background: Some(Background::Color(Color::from_rgb(sr, sg, sb))),
             border: Border {
-                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                color: Color::from_rgba(sr, sg, sb, 0.0),
                 width: 0.0,
                 radius: 8.0.into(), // Rounded corners
             },
@@ -1679,10 +1775,11 @@ impl iced::widget::button::StyleSheet for RoundedButtonStyle {
     }
 
     fn hovered(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgb(0.0, 1.0, 0.6))),
+            background: Some(Background::Color(Color::from_rgb(pr, pg, pb))),
             border: Border {
-                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                color: Color::from_rgba(pr, pg, pb, 0.0),
                 width: 0.0,
                 radius: 8.0.into(),
             },
@@ -1692,10 +1789,11 @@ impl iced::widget::button::StyleSheet for RoundedButtonStyle {
     }
 
     fn pressed(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (sr, sg, sb) = self.secondary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgb(0.0, 0.6, 0.8))),
+            background: Some(Background::Color(Color::from_rgb(sr * 0.8, sg * 0.8, sb * 0.8))),
             border: Border {
-                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                color: Color::from_rgba(sr, sg, sb, 0.0),
                 width: 0.0,
                 radius: 8.0.into(),
             },
@@ -1705,8 +1803,9 @@ impl iced::widget::button::StyleSheet for RoundedButtonStyle {
     }
 
     fn disabled(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (sr, sg, sb) = self.secondary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgba(0.0, 0.8, 1.0, 0.3))),
+            background: Some(Background::Color(Color::from_rgba(sr, sg, sb, 0.3))),
             border: Border {
                 color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
                 width: 0.0,
@@ -1850,16 +1949,27 @@ impl iced::widget::container::StyleSheet for SettingsPanelStyle {
 }
 
 // Code block styles
-struct CodeBlockStyle;
+struct CodeBlockStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl CodeBlockStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
 
 impl iced::widget::container::StyleSheet for CodeBlockStyle {
     type Style = iced::Theme;
 
     fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::container::Appearance {
             background: Some(Background::Color(Color::from_rgb(0.1, 0.1, 0.12))),
             border: Border {
-                color: Color::from_rgba(0.0, 1.0, 0.6, 0.3),
+                color: Color::from_rgba(pr, pg, pb, 0.3),
                 width: 1.0,
                 radius: 8.0.into(),
             },
@@ -1868,16 +1978,27 @@ impl iced::widget::container::StyleSheet for CodeBlockStyle {
     }
 }
 
-struct InlineCodeStyle;
+struct InlineCodeStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl InlineCodeStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
 
 impl iced::widget::container::StyleSheet for InlineCodeStyle {
     type Style = iced::Theme;
 
     fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::container::Appearance {
-            background: Some(Background::Color(Color::from_rgba(0.0, 1.0, 0.6, 0.1))),
+            background: Some(Background::Color(Color::from_rgba(pr, pg, pb, 0.1))),
             border: Border {
-                color: Color::from_rgba(0.0, 1.0, 0.6, 0.0),
+                color: Color::from_rgba(pr, pg, pb, 0.0),
                 width: 0.0,
                 radius: 4.0.into(),
             },
@@ -1886,17 +2007,28 @@ impl iced::widget::container::StyleSheet for InlineCodeStyle {
     }
 }
 
-struct CodeCopyButtonStyle;
+struct CodeCopyButtonStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl CodeCopyButtonStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
 
 impl iced::widget::button::StyleSheet for CodeCopyButtonStyle {
     type Style = iced::Theme;
 
     fn active(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgba(0.0, 1.0, 0.6, 0.2))),
-            text_color: Color::from_rgb(0.0, 1.0, 0.6),
+            background: Some(Background::Color(Color::from_rgba(pr, pg, pb, 0.2))),
+            text_color: Color::from_rgb(pr, pg, pb),
             border: Border {
-                color: Color::from_rgba(0.0, 1.0, 0.6, 0.5),
+                color: Color::from_rgba(pr, pg, pb, 0.5),
                 width: 1.0,
                 radius: 4.0.into(),
             },
@@ -1905,15 +2037,84 @@ impl iced::widget::button::StyleSheet for CodeCopyButtonStyle {
     }
 
     fn hovered(&self, _style: &Self::Style) -> iced::widget::button::Appearance {
+        let (pr, pg, pb) = self.primary_color;
         iced::widget::button::Appearance {
-            background: Some(Background::Color(Color::from_rgba(0.0, 1.0, 0.6, 0.3))),
-            text_color: Color::from_rgb(0.0, 1.0, 0.6),
+            background: Some(Background::Color(Color::from_rgba(pr, pg, pb, 0.3))),
+            text_color: Color::from_rgb(pr, pg, pb),
             border: Border {
-                color: Color::from_rgba(0.0, 1.0, 0.6, 0.8),
+                color: Color::from_rgba(pr, pg, pb, 0.8),
                 width: 1.0,
                 radius: 4.0.into(),
             },
             ..Default::default()
+        }
+    }
+}
+
+struct CustomScrollbarStyle {
+    primary_color: (f32, f32, f32),
+    secondary_color: (f32, f32, f32),
+}
+
+impl CustomScrollbarStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+            secondary_color: theme.secondary_color(),
+        }
+    }
+}
+
+impl iced::widget::scrollable::StyleSheet for CustomScrollbarStyle {
+    type Style = iced::Theme;
+
+    fn active(&self, _style: &Self::Style) -> iced::widget::scrollable::Appearance {
+        let (r, g, b) = self.primary_color;
+        
+        iced::widget::scrollable::Appearance {
+            container: iced::widget::container::Appearance::default(),
+            scrollbar: iced::widget::scrollable::Scrollbar {
+                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.1))),
+                border: Border {
+                    radius: 6.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                scroller: iced::widget::scrollable::Scroller {
+                    color: Color::from_rgba(r, g, b, 0.6),
+                    border: Border {
+                        radius: 6.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                },
+            },
+            gap: None,
+        }
+    }
+
+    fn hovered(&self, _style: &Self::Style, _is_mouse_over_scrollbar: bool) -> iced::widget::scrollable::Appearance {
+        let (r, g, b) = self.primary_color;
+        
+        iced::widget::scrollable::Appearance {
+            container: iced::widget::container::Appearance::default(),
+            scrollbar: iced::widget::scrollable::Scrollbar {
+                background: Some(Background::Color(Color::from_rgba(0.0, 0.0, 0.0, 0.2))),
+                border: Border {
+                    radius: 6.0.into(),
+                    width: 0.0,
+                    color: Color::TRANSPARENT,
+                },
+                scroller: iced::widget::scrollable::Scroller {
+                    color: Color::from_rgba(r, g, b, 0.8),
+                    border: Border {
+                        radius: 6.0.into(),
+                        width: 0.0,
+                        color: Color::TRANSPARENT,
+                    },
+                },
+            },
+            gap: None,
         }
     }
 }

@@ -1,7 +1,7 @@
 [app]
 window_title = "Frontend build v0.2.0"
-window_width = 900
-window_height = 650
+window_width = 900.0
+window_height = 650.0
 
 [backend]
 url = "http://localhost:11434"
@@ -11,4 +11,4 @@ timeout_seconds = 30
 [ui]
 font_size = 16
 max_chat_history = 1000
-
+theme = "Hacker Green"
