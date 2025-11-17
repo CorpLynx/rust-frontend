@@ -812,15 +812,25 @@ impl Application for ChatApp {
             }
             Message::DeleteConversation(id) => {
                 let manager = self.conversation_manager.clone();
+                let active_id = self.active_conversation_id.clone();
+                
+                // If deleting the active conversation, clear the chat
+                if Some(&id) == active_id.as_ref() {
+                    self.chat_history.clear();
+                    self.active_conversation_id = None;
+                }
+                
                 Command::perform(
                     async move {
-                        manager.delete_conversation(&id)
-                            .map_err(|e| format!("Failed to delete conversation: {}", e))
+                        // Delete the conversation
+                        if let Err(e) = manager.delete_conversation(&id) {
+                            return Err(format!("Failed to delete conversation: {}", e));
+                        }
+                        // Reload the conversation list
+                        manager.list_conversations()
+                            .map_err(|e| format!("Failed to reload conversations: {}", e))
                     },
-                    |result| match result {
-                        Ok(_) => Message::ConversationsLoaded(Ok(Vec::new())), // Trigger reload
-                        Err(e) => Message::ConversationsLoaded(Err(e)),
-                    },
+                    |result| Message::ConversationsLoaded(result),
                 )
             }
             Message::CopyCodeBlock(code) => {
