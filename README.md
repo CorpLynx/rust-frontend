@@ -22,6 +22,8 @@ A modern, cross-platform GUI application built with Rust and Iced for interactin
 - **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Step-by-step guide for using the new features
 - **[STYLE_GUIDE.md](STYLE_GUIDE.md)** - Lo-fi hacker aesthetic design guide
 - **[LAYOUT_UPDATE.md](LAYOUT_UPDATE.md)** - ChatGPT-style layout documentation
+- **[OLLAMA_STYLE.md](OLLAMA_STYLE.md)** - Ollama-inspired design changes
+- **[FINAL_LAYOUT.md](FINAL_LAYOUT.md)** - Final aligned message layout
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and technical details
 - **[CHANGELOG.md](CHANGELOG.md)** - Version history and roadmap
 - **[SUMMARY.md](SUMMARY.md)** - Summary of latest changes
@@ -31,7 +33,7 @@ A modern, cross-platform GUI application built with Rust and Iced for interactin
 
 This project is a desktop GUI application that serves as a frontend for AI chat services. It communicates with a backend API via HTTP requests, displays the conversation history, and provides a modern user interface built with the Iced GUI framework.
 
-**Design:** Features a **lo-fi hacker aesthetic** with neon green terminal-style text, cyan accents, and a cyberpunk-inspired dark mode. The layout follows a **ChatGPT/Ollama-style** centered column design with a floating input box at the bottom for a modern, focused chat experience.
+**Design:** Features a **lo-fi hacker aesthetic** with neon green text, cyan accents, and a cyberpunk-inspired dark interface. The layout follows an **Ollama-style** design with user messages aligned right (lighter) and AI messages aligned left (darker), plus a floating input box at the bottom. Dark mode only for a consistent, focused interface.
 
 **Key Technologies:**
 - **Rust** - Systems programming language
@@ -52,7 +54,7 @@ This project is a desktop GUI application that serves as a frontend for AI chat 
 - ✅ **History Loading** - Automatic restoration of previous conversations on startup
 - ✅ **Timestamps** - Each message includes a timestamp
 - ✅ **Configurable Backend** - Easy configuration via `config.toml`
-- ✅ **Dark Mode** - Toggle between light and dark themes with moon/sun button
+- ✅ **Dark Mode Only** - Consistent hacker aesthetic, always-on dark interface
 - ✅ **Auto-scroll** - Automatically scrolls to the latest message
 - ✅ **Copy Messages** - Copy any message to clipboard with the 📋 button
 - ✅ **Clear Chat** - Clear all chat history with one click
@@ -234,9 +236,8 @@ cargo run
 2. **Click "Send"** or press **Enter** to submit
 3. **View responses** in the scrollable chat history area
 4. **Error messages** (if any) appear in red above the chat area
-5. **Toggle dark mode** by clicking the 🌙/☀️ button in the header
-6. **Copy messages** by clicking the 📋 button next to any message
-7. **Clear chat** by clicking the "Clear Chat" button in the header
+5. **Copy messages** by clicking the ⎘ button next to any message
+6. **Start new chat** by clicking the "New Chat" button in the header
 
 ### Chat History
 
