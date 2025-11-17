@@ -5,6 +5,7 @@ use iced::{
         button, column, container, row, scrollable, text, text_input, Column,
     },
     Alignment, Application, Command, Element, Length, Subscription, Theme,
+    Color, Background, Border,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -34,8 +35,10 @@ pub enum Message {
     PromptChanged(String),
     SendPrompt,
     ResponseReceived(Result<String, String>),
-    LoadHistory,
     HistoryLoaded(Result<Vec<ChatMessage>, String>),
+    ClearChat,
+    ToggleDarkMode,
+    CopyMessage(usize),
 }
 
 pub struct ChatApp {
@@ -44,6 +47,8 @@ pub struct ChatApp {
     chat_history: Vec<ChatMessage>,
     is_loading: bool,
     error_message: Option<String>,
+    dark_mode: bool,
+    scroll_id: scrollable::Id,
 }
 
 impl ChatApp {
@@ -54,6 +59,8 @@ impl ChatApp {
             chat_history: Vec::new(),
             is_loading: false,
             error_message: None,
+            dark_mode: false,
+            scroll_id: scrollable::Id::unique(),
         }
     }
 
@@ -215,11 +222,14 @@ impl Application for ChatApp {
 
                 // Send request
                 info!("Sending prompt to backend: {}", prompt);
-                Self::send_request(
-                    prompt,
-                    self.config.backend.url.clone(),
-                    self.config.backend.timeout_seconds,
-                )
+                Command::batch(vec![
+                    Self::send_request(
+                        prompt,
+                        self.config.backend.url.clone(),
+                        self.config.backend.timeout_seconds,
+                    ),
+                    scrollable::snap_to(self.scroll_id.clone(), scrollable::RelativeOffset::END),
+                ])
             }
             Message::ResponseReceived(result) => {
                 self.is_loading = false;
@@ -237,6 +247,9 @@ impl Application for ChatApp {
 
                         self.save_history();
                         self.error_message = None;
+                        
+                        // Auto-scroll to bottom after receiving response
+                        return scrollable::snap_to(self.scroll_id.clone(), scrollable::RelativeOffset::END);
                     }
                     Err(e) => {
                         let error_msg = format!("Error: {}", e);
@@ -248,7 +261,6 @@ impl Application for ChatApp {
 
                 Command::none()
             }
-            Message::LoadHistory => Self::load_history(),
             Message::HistoryLoaded(result) => {
                 match result {
                     Ok(history) => {
@@ -263,15 +275,66 @@ impl Application for ChatApp {
                 }
                 Command::none()
             }
+            Message::ClearChat => {
+                self.chat_history.clear();
+                self.save_history();
+                self.error_message = None;
+                info!("Chat history cleared");
+                Command::none()
+            }
+            Message::ToggleDarkMode => {
+                self.dark_mode = !self.dark_mode;
+                info!("Dark mode: {}", self.dark_mode);
+                Command::none()
+            }
+            Message::CopyMessage(index) => {
+                if let Some(message) = self.chat_history.get(index) {
+                    // Use arboard for clipboard access
+                    if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                        let _ = clipboard.set_text(&message.content);
+                        info!("Copied message to clipboard");
+                    }
+                }
+                Command::none()
+            }
         }
     }
 
-    fn view(&self) -> Element<Message> {
+    fn view(&self) -> Element<'_, Message> {
+        // Lo-fi hacker aesthetic colors
+        let text_color = if self.dark_mode {
+            Color::from_rgb(0.0, 1.0, 0.6) // Neon green
+        } else {
+            Color::from_rgb(0.1, 0.1, 0.1)
+        };
+
+        let muted_color = if self.dark_mode {
+            Color::from_rgb(0.0, 0.7, 0.5) // Dimmer green
+        } else {
+            Color::from_rgb(0.5, 0.5, 0.5)
+        };
+
+        let user_color = if self.dark_mode {
+            Color::from_rgb(1.0, 0.3, 0.6) // Hot pink
+        } else {
+            Color::from_rgb(0.6, 0.2, 0.8)
+        };
+
+        let ai_color = if self.dark_mode {
+            Color::from_rgb(0.0, 1.0, 0.6) // Neon green
+        } else {
+            Color::from_rgb(0.2, 0.8, 0.4)
+        };
+
         let chat_display: Element<_> = if self.chat_history.is_empty() {
             container(
-                text("No messages yet. Start a conversation!")
+                text(if self.dark_mode { 
+                    "> SYSTEM READY. AWAITING INPUT..." 
+                } else { 
+                    "No messages yet. Start a conversation!" 
+                })
                     .size(self.config.ui.font_size)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5))),
+                    .style(iced::theme::Text::Color(muted_color)),
             )
             .width(Length::Fill)
             .height(Length::Fill)
@@ -280,103 +343,366 @@ impl Application for ChatApp {
             .into()
         } else {
             let mut chat_column = Column::new()
-                .spacing(10)
-                .padding(10)
-                .width(Length::Fill);
+                .spacing(16)
+                .padding(20)
+                .width(Length::Fill)
+                .align_items(Alignment::Center);
 
-            for message in &self.chat_history {
-                let role_text = match message.role.as_str() {
-                    "user" => text("You:").size(self.config.ui.font_size).style(iced::theme::Text::Color(iced::Color::from_rgb(0.2, 0.5, 0.9))),
-                    _ => text("AI:").size(self.config.ui.font_size).style(iced::theme::Text::Color(iced::Color::from_rgb(0.2, 0.8, 0.4))),
+            for (index, message) in self.chat_history.iter().enumerate() {
+                let (role_prefix, role_color) = match message.role.as_str() {
+                    "user" => (if self.dark_mode { "USER>" } else { "You:" }, user_color),
+                    _ => (if self.dark_mode { "AI>" } else { "AI:" }, ai_color),
                 };
+
+                let role_text = text(role_prefix)
+                    .size(self.config.ui.font_size - 2)
+                    .style(iced::theme::Text::Color(role_color));
 
                 let content_text = text(&message.content)
                     .size(self.config.ui.font_size)
+                    .style(iced::theme::Text::Color(text_color))
                     .width(Length::Fill);
 
-                let timestamp_text = text(&message.timestamp)
-                    .size(self.config.ui.font_size - 4)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(0.5, 0.5, 0.5)));
+                let timestamp_text = text(if self.dark_mode {
+                    format!("[{}]", &message.timestamp)
+                } else {
+                    message.timestamp.clone()
+                })
+                    .size(self.config.ui.font_size - 6)
+                    .style(iced::theme::Text::Color(muted_color));
 
-                let message_container = container(
+                let copy_button = button(
+                    text(if self.dark_mode { "[COPY]" } else { "📋" })
+                        .size(self.config.ui.font_size - 6)
+                )
+                .on_press(Message::CopyMessage(index))
+                .padding(4)
+                .style(iced::theme::Button::Secondary);
+
+                // ChatGPT-style: centered column with max width
+                let message_content = container(
                     column![
-                        row![role_text, timestamp_text].spacing(5).align_items(Alignment::Start),
+                        row![
+                            role_text,
+                            timestamp_text,
+                            copy_button
+                        ]
+                        .spacing(8)
+                        .align_items(Alignment::Center),
                         content_text
                     ]
-                    .spacing(5)
+                    .spacing(8)
                     .width(Length::Fill),
                 )
-                .padding(10)
-                .style(iced::theme::Container::Box)
-                .width(Length::Fill);
+                .padding(16)
+                .style(if self.dark_mode {
+                    iced::theme::Container::Custom(Box::new(HackerMessageStyle))
+                } else {
+                    iced::theme::Container::Box
+                })
+                .width(Length::Fixed(700.0)) // Max width like ChatGPT
+                .center_x();
 
-                chat_column = chat_column.push(message_container);
+                chat_column = chat_column.push(message_content);
             }
 
             scrollable(chat_column)
-                .id(iced::widget::scrollable::Id::unique())
+                .id(self.scroll_id.clone())
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
         };
 
-        let input_row = row![
-            text_input("Enter your prompt...", &self.prompt_input)
-                .id(iced::widget::text_input::Id::unique())
-                .on_input(Message::PromptChanged)
-                .on_submit(Message::SendPrompt)
-                .size(self.config.ui.font_size)
-                .width(Length::Fill)
-                .padding(10),
-            button(if self.is_loading { "Sending..." } else { "Send" })
-                .on_press(Message::SendPrompt)
-                .padding(10)
-                .width(Length::Shrink)
-        ]
-        .spacing(10)
-        .align_items(Alignment::Center)
+        let input_placeholder = if self.dark_mode {
+            "> ENTER COMMAND..."
+        } else {
+            "Enter your prompt..."
+        };
+
+        let send_text = if self.dark_mode {
+            if self.is_loading { "↻" } else { "↑" }
+        } else {
+            if self.is_loading { "..." } else { "↑" }
+        };
+
+        // ChatGPT-style floating input box
+        let input_box = container(
+            row![
+                text_input(input_placeholder, &self.prompt_input)
+                    .id(iced::widget::text_input::Id::unique())
+                    .on_input(Message::PromptChanged)
+                    .on_submit(Message::SendPrompt)
+                    .size(self.config.ui.font_size)
+                    .width(Length::Fill)
+                    .padding(14)
+                    .style(if self.dark_mode {
+                        iced::theme::TextInput::Custom(Box::new(HackerInputStyle))
+                    } else {
+                        iced::theme::TextInput::Default
+                    }),
+                button(text(send_text).size(self.config.ui.font_size + 4))
+                    .on_press(Message::SendPrompt)
+                    .padding(12)
+                    .width(Length::Fixed(50.0))
+                    .style(if self.dark_mode {
+                        iced::theme::Button::Primary
+                    } else {
+                        iced::theme::Button::Primary
+                    })
+            ]
+            .spacing(8)
+            .align_items(Alignment::Center)
+            .width(Length::Fixed(700.0)),
+        )
+        .padding(12)
+        .style(if self.dark_mode {
+            iced::theme::Container::Custom(Box::new(HackerInputContainerStyle))
+        } else {
+            iced::theme::Container::Box
+        })
+        .center_x()
         .width(Length::Fill);
+
+        let input_row = container(input_box)
+            .padding(20)
+            .width(Length::Fill);
+
+        let error_color = if self.dark_mode {
+            Color::from_rgb(1.0, 0.2, 0.4) // Hot pink/red
+        } else {
+            Color::from_rgb(0.9, 0.2, 0.2)
+        };
 
         let error_display = if let Some(error) = &self.error_message {
             container(
-                text(error)
+                text(if self.dark_mode {
+                    format!("⚠ ERROR: {}", error)
+                } else {
+                    error.clone()
+                })
                     .size(self.config.ui.font_size - 2)
-                    .style(iced::theme::Text::Color(iced::Color::from_rgb(0.9, 0.2, 0.2))),
+                    .style(iced::theme::Text::Color(error_color)),
             )
-            .padding(5)
-            .style(iced::theme::Container::Box)
+            .padding(8)
+            .style(if self.dark_mode {
+                iced::theme::Container::Custom(Box::new(HackerErrorStyle))
+            } else {
+                iced::theme::Container::Box
+            })
             .width(Length::Fill)
             .into()
         } else {
             Element::from(container(text("")).width(Length::Fill).height(Length::Shrink))
         };
 
+        let header_text_color = if self.dark_mode {
+            Color::from_rgb(0.0, 1.0, 0.6) // Neon green
+        } else {
+            Color::from_rgb(0.2, 0.2, 0.2)
+        };
+
+        let header_title = if self.dark_mode {
+            "[ NEURAL INTERFACE v0.2.0 ]"
+        } else {
+            "AI Chat Interface"
+        };
+
+        let dark_mode_button = button(
+            text(if self.dark_mode { "[LIGHT]" } else { "🌙" })
+                .size(self.config.ui.font_size - 4)
+        )
+        .on_press(Message::ToggleDarkMode)
+        .padding(6)
+        .style(iced::theme::Button::Secondary);
+
+        let clear_button = button(
+            text(if self.dark_mode { "[CLEAR]" } else { "Clear" })
+                .size(self.config.ui.font_size - 4)
+        )
+        .on_press(Message::ClearChat)
+        .padding(6)
+        .style(iced::theme::Button::Secondary);
+
+        // Minimal header like ChatGPT
+        let header = container(
+            row![
+                text(header_title)
+                    .size(self.config.ui.font_size + 2)
+                    .style(iced::theme::Text::Color(header_text_color)),
+                dark_mode_button,
+                clear_button
+            ]
+            .spacing(12)
+            .align_items(Alignment::Center)
+        )
+        .padding(12)
+        .width(Length::Fill)
+        .center_x();
+
+        // ChatGPT-style layout: header at top, chat in middle, input floating at bottom
         let content = column![
-            text("AI Chat Interface")
-                .size(self.config.ui.font_size + 4)
-                .style(iced::theme::Text::Color(iced::Color::from_rgb(0.2, 0.2, 0.2))),
+            header,
             error_display,
             chat_display,
             input_row
         ]
-        .spacing(10)
-        .padding(15)
+        .spacing(0)
         .width(Length::Fill)
         .height(Length::Fill);
 
         container(content)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding(10)
+            .style(if self.dark_mode {
+                iced::theme::Container::Custom(Box::new(HackerContainerStyle))
+            } else {
+                iced::theme::Container::default()
+            })
             .into()
     }
 
     fn theme(&self) -> Theme {
-        Theme::Light
+        if self.dark_mode {
+            Theme::custom(
+                "hacker".to_string(),
+                iced::theme::Palette {
+                    background: Color::from_rgb(0.05, 0.05, 0.08),
+                    text: Color::from_rgb(0.0, 1.0, 0.6),
+                    primary: Color::from_rgb(0.0, 0.8, 1.0),
+                    success: Color::from_rgb(0.0, 1.0, 0.6),
+                    danger: Color::from_rgb(1.0, 0.2, 0.4),
+                },
+            )
+        } else {
+            Theme::Light
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
         Subscription::none()
+    }
+}
+
+// Custom styles for hacker aesthetic
+struct HackerContainerStyle;
+
+impl iced::widget::container::StyleSheet for HackerContainerStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgb(0.05, 0.05, 0.08))),
+            border: Border {
+                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                width: 0.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+struct HackerInputContainerStyle;
+
+impl iced::widget::container::StyleSheet for HackerInputContainerStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(0.0, 0.8, 1.0, 0.08))),
+            border: Border {
+                color: Color::from_rgba(0.0, 0.8, 1.0, 0.4),
+                width: 1.0,
+                radius: 12.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+struct HackerMessageStyle;
+
+impl iced::widget::container::StyleSheet for HackerMessageStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(0.0, 0.8, 1.0, 0.05))),
+            border: Border {
+                color: Color::from_rgba(0.0, 0.8, 1.0, 0.3),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+struct HackerErrorStyle;
+
+impl iced::widget::container::StyleSheet for HackerErrorStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(1.0, 0.2, 0.4, 0.1))),
+            border: Border {
+                color: Color::from_rgb(1.0, 0.2, 0.4),
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+struct HackerInputStyle;
+
+impl iced::widget::text_input::StyleSheet for HackerInputStyle {
+    type Style = iced::Theme;
+
+    fn active(&self, _style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: Background::Color(Color::from_rgba(0.08, 0.08, 0.12, 0.0)),
+            border: Border {
+                color: Color::from_rgba(0.0, 0.8, 1.0, 0.0),
+                width: 0.0,
+                radius: 8.0.into(),
+            },
+            icon_color: Color::from_rgb(0.0, 1.0, 0.6),
+        }
+    }
+
+    fn focused(&self, _style: &Self::Style) -> iced::widget::text_input::Appearance {
+        iced::widget::text_input::Appearance {
+            background: Background::Color(Color::from_rgba(0.08, 0.08, 0.12, 0.0)),
+            border: Border {
+                color: Color::from_rgba(0.0, 1.0, 0.6, 0.0),
+                width: 0.0,
+                radius: 8.0.into(),
+            },
+            icon_color: Color::from_rgb(0.0, 1.0, 0.6),
+        }
+    }
+
+    fn placeholder_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgba(0.0, 0.7, 0.5, 0.5)
+    }
+
+    fn value_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgb(0.0, 1.0, 0.6)
+    }
+
+    fn selection_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgba(0.0, 0.8, 1.0, 0.3)
+    }
+
+    fn disabled(&self, _style: &Self::Style) -> iced::widget::text_input::Appearance {
+        self.active(_style)
+    }
+
+    fn disabled_color(&self, _style: &Self::Style) -> Color {
+        Color::from_rgba(0.0, 0.7, 0.5, 0.3)
     }
 }
 

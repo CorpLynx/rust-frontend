@@ -15,9 +15,23 @@ A modern, cross-platform GUI application built with Rust and Iced for interactin
 - [What Was Built](#what-was-built)
 - [Next Steps](#next-steps)
 
+## 📚 Additional Documentation
+
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick reference card for common tasks
+- **[FEATURES.md](FEATURES.md)** - Detailed description of new features added in Phase 9
+- **[USAGE_GUIDE.md](USAGE_GUIDE.md)** - Step-by-step guide for using the new features
+- **[STYLE_GUIDE.md](STYLE_GUIDE.md)** - Lo-fi hacker aesthetic design guide
+- **[LAYOUT_UPDATE.md](LAYOUT_UPDATE.md)** - ChatGPT-style layout documentation
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** - System architecture and technical details
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and roadmap
+- **[SUMMARY.md](SUMMARY.md)** - Summary of latest changes
+- **[BUILD_STATUS.md](BUILD_STATUS.md)** - Current build status and recent changes
+
 ## 🎯 Overview
 
 This project is a desktop GUI application that serves as a frontend for AI chat services. It communicates with a backend API via HTTP requests, displays the conversation history, and provides a modern user interface built with the Iced GUI framework.
+
+**Design:** Features a **lo-fi hacker aesthetic** with neon green terminal-style text, cyan accents, and a cyberpunk-inspired dark mode. The layout follows a **ChatGPT/Ollama-style** centered column design with a floating input box at the bottom for a modern, focused chat experience.
 
 **Key Technologies:**
 - **Rust** - Systems programming language
@@ -38,6 +52,10 @@ This project is a desktop GUI application that serves as a frontend for AI chat 
 - ✅ **History Loading** - Automatic restoration of previous conversations on startup
 - ✅ **Timestamps** - Each message includes a timestamp
 - ✅ **Configurable Backend** - Easy configuration via `config.toml`
+- ✅ **Dark Mode** - Toggle between light and dark themes with moon/sun button
+- ✅ **Auto-scroll** - Automatically scrolls to the latest message
+- ✅ **Copy Messages** - Copy any message to clipboard with the 📋 button
+- ✅ **Clear Chat** - Clear all chat history with one click
 
 ### Technical Features
 - ✅ **Asynchronous Operations** - Non-blocking HTTP requests using Tokio
@@ -53,8 +71,12 @@ rust-frontend/
 ├── Cargo.toml          # Rust project configuration and dependencies
 ├── Cargo.lock          # Locked dependency versions
 ├── config.toml         # Application configuration file
-├── README.md           # This file
-├── BUILD_STATUS.md     # Build status and warnings documentation
+├── README.md           # This file - Main documentation
+├── BUILD_STATUS.md     # Build status and recent changes
+├── FEATURES.md         # Detailed feature descriptions (v0.2.0)
+├── USAGE_GUIDE.md      # User guide for new features
+├── CHANGELOG.md        # Version history and roadmap
+├── SUMMARY.md          # Quick summary of latest changes
 ├── .gitignore          # Git ignore patterns
 ├── src/
 │   ├── main.rs         # Application entry point
@@ -81,6 +103,7 @@ Rust project manifest file that defines:
 - `config` - Configuration file loading
 - `chrono` - Timestamp generation
 - `log` / `env_logger` - Logging
+- `arboard` - Clipboard access for copy functionality
 
 #### `config.toml`
 Configuration file for customizing the application:
@@ -211,6 +234,9 @@ cargo run
 2. **Click "Send"** or press **Enter** to submit
 3. **View responses** in the scrollable chat history area
 4. **Error messages** (if any) appear in red above the chat area
+5. **Toggle dark mode** by clicking the 🌙/☀️ button in the header
+6. **Copy messages** by clicking the 📋 button next to any message
+7. **Clear chat** by clicking the "Clear Chat" button in the header
 
 ### Chat History
 
@@ -303,15 +329,20 @@ See `BUILD_STATUS.md` for details.
 - ✅ Fixed Iced API usage issues
 - ✅ Resolved compilation errors
 
+### Phase 9: UI Enhancements
+- ✅ Implemented dark mode toggle with theme switching
+- ✅ Added auto-scroll to bottom when new messages arrive
+- ✅ Added copy-to-clipboard functionality for messages
+- ✅ Added clear chat button to reset conversation
+- ✅ Fixed unused `LoadHistory` variant warning
+- ✅ Fixed lifetime syntax warning in `view()` function
+- ✅ Added `arboard` dependency for clipboard support
+
 ## 🎯 Next Steps
 
 ### Immediate Improvements
 
-1. **Fix Warnings**
-   - Remove or suppress unused `LoadHistory` variant
-   - Fix lifetime syntax in `view()` function
-
-2. **Testing**
+1. **Testing**
    - Add unit tests for configuration loading
    - Add integration tests for backend communication
    - Test error handling scenarios
@@ -324,11 +355,11 @@ See `BUILD_STATUS.md` for details.
 ### Feature Enhancements
 
 4. **UI Improvements**
-   - Add dark mode support
-   - Implement custom themes
-   - Add message copy functionality
+   - Implement custom themes (beyond light/dark)
    - Add message deletion
-   - Improve scrolling behavior (auto-scroll to bottom)
+   - Add message editing
+   - Add syntax highlighting for code blocks
+   - Add markdown rendering support
 
 5. **Chat Features**
    - Add conversation export (markdown, plain text)

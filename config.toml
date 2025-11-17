@@ -1,7 +1,7 @@
 [app]
-window_title = "AI Chat"
-window_width = 800
-window_height = 600
+window_title = "NEURAL INTERFACE v0.2.0"
+window_width = 900
+window_height = 650
 
 [backend]
 url = "http://localhost:8000/generate"
