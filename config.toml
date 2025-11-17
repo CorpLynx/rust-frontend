@@ -1,0 +1,13 @@
+[app]
+window_title = "AI Chat"
+window_width = 800
+window_height = 600
+
+[backend]
+url = "http://localhost:8000/generate"
+timeout_seconds = 30
+
+[ui]
+font_size = 16
+max_chat_history = 1000
+

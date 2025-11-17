@@ -1,0 +1,24 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+
+# Chat history (optional - remove if you want to track it)
+chat_history.json
+
+# OS
+.DS_Store
+Thumbs.db
+
