@@ -1,5 +1,4 @@
 use crate::config::AppConfig;
-use anyhow::Result;
 use iced::{
     alignment, executor,
     widget::{
@@ -112,7 +111,7 @@ impl ChatApp {
 
                 Ok(ai_response.to_string())
             },
-            Message::ResponseReceived,
+            |result: Result<String, String>| Message::ResponseReceived(result),
         )
     }
 
@@ -159,7 +158,7 @@ impl ChatApp {
                     Err(_) => Ok(Vec::new()), // File doesn't exist, return empty history
                 }
             },
-            Message::HistoryLoaded,
+            |result: Result<Vec<ChatMessage>, String>| Message::HistoryLoaded(result),
         )
     }
 }
