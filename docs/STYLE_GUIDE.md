@@ -93,7 +93,7 @@ The app now features a **lo-fi hacker/cyberpunk aesthetic** inspired by classic 
 
 ### Light Mode
 ```
-AI Chat Interface  🌙  Clear Chat
+Prometheus  🌙  Clear Chat
 ```
 
 ## Empty State

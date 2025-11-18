@@ -64,7 +64,7 @@
 ## 🗂️ File Organization
 
 ```
-rust-frontend/
+prometheus/
 │
 ├── 📁 Source Code
 │   └── src/

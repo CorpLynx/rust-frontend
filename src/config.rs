@@ -119,7 +119,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             app: AppSettings {
-                window_title: "AI Chat".to_string(),
+                window_title: "Prometheus".to_string(),
                 window_width: 800.0,
                 window_height: 600.0,
             },

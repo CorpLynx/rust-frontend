@@ -115,7 +115,7 @@ Theme::custom(
 
 ### Header
 ```
-Before: AI Chat Interface  ☀️  Clear Chat
+Before: Prometheus  ☀️  Clear Chat
 After:  [ NEURAL INTERFACE v0.2.0 ]  [LIGHT]  [CLEAR]
 ```
 

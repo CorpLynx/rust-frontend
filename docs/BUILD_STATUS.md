@@ -38,13 +38,13 @@ cargo run
 ```
 
 **Expected Behavior:**
-- A GUI window should open with title "AI Chat"
-- Window size: 800x600 (configurable in `config.toml`)
+- A GUI window should open with title "Prometheus v0.2.0"
+- Window size: 900x650 (configurable in `config.toml`)
 - You should see:
   - A text input field at the bottom
   - A "Send" button
   - A chat history display area (empty initially)
-  - Title "AI Chat Interface" at the top
+  - Title "Prometheus" at the top
 
 ### 3. Test Backend Connection
 

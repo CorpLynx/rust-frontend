@@ -69,7 +69,7 @@
 
 ### Header
 ```
-Light Mode:  AI Chat Interface
+Light Mode:  Prometheus
 Dark Mode:   [ NEURAL INTERFACE v0.2.0 ]
 ```
 

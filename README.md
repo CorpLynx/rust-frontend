@@ -1,6 +1,6 @@
-# Rust AI Chat Frontend
+# Prometheus
 
-A modern, cross-platform GUI application built with Rust and Iced for interacting with AI backend services. This application provides a clean, user-friendly interface for sending prompts to an AI backend and displaying responses in a chat-like format.
+A modern, cross-platform AI chat application built with Rust and Iced. Prometheus provides a powerful interface for interacting with AI backend services, featuring advanced search capabilities, conversation management, and a sleek cyberpunk-inspired design.
 
 ## 📋 Table of Contents
 
@@ -31,7 +31,7 @@ A modern, cross-platform GUI application built with Rust and Iced for interactin
 
 ## 🎯 Overview
 
-This project is a desktop GUI application that serves as a frontend for AI chat services. It communicates with a backend API via HTTP requests, displays the conversation history, and provides a modern user interface built with the Iced GUI framework.
+Prometheus is a desktop GUI application that serves as a powerful frontend for AI chat services. Named after the Greek Titan who brought fire (knowledge) to humanity, Prometheus brings advanced AI capabilities to your desktop. It communicates with backend APIs via HTTP requests, features intelligent search indexing, and provides a modern user interface built with the Iced GUI framework.
 
 **Design:** Features a **lo-fi hacker aesthetic** with neon green text, cyan accents, and a cyberpunk-inspired dark interface. The layout follows an **Ollama-style** design with user messages aligned right (lighter) and AI messages aligned left (darker), plus a floating input box at the bottom. Dark mode only for a consistent, focused interface.
 
@@ -69,7 +69,7 @@ This project is a desktop GUI application that serves as a frontend for AI chat 
 ## 📁 Project Structure
 
 ```
-rust-frontend/
+prometheus/
 ├── Cargo.toml          # Rust project configuration and dependencies
 ├── Cargo.lock          # Locked dependency versions
 ├── config.toml         # Application configuration file
@@ -164,7 +164,7 @@ Main application logic containing:
 
 1. **Clone or navigate to the project directory:**
    ```powershell
-   cd C:\Users\brich\OneDrive\Desktop\Repos\rust-frontend
+   cd path/to/prometheus
    ```
 
 2. **Build the project:**
@@ -185,7 +185,7 @@ Edit `config.toml` to customize the application:
 
 ```toml
 [app]
-window_title = "AI Chat"        # Window title bar text
+window_title = "Prometheus"     # Window title bar text
 window_width = 800              # Initial window width in pixels
 window_height = 600             # Initial window height in pixels
 

@@ -90,25 +90,25 @@
   - Clear current messages
   - _Requirements: 2.1_
 
-- [ ] 8. Implement conversation context menu
-  - [ ] 8.1 Add right-click detection on conversation items
+- [x] 8. Implement conversation context menu
+  - [x] 8.1 Add right-click detection on conversation items
     - Use mouse_area widget for right-click detection
     - Show context menu at cursor position
     - _Requirements: 2.4_
   
-  - [ ] 8.2 Create conversation context menu UI
+  - [x] 8.2 Create conversation context menu UI
     - Add Rename and Delete options
     - Style menu with hacker aesthetic
     - Position menu near cursor
     - _Requirements: 2.4_
   
-  - [ ] 8.3 Implement rename conversation
+  - [x] 8.3 Implement rename conversation
     - Show inline text input for renaming
     - Update conversation name on confirm
     - Save updated metadata
     - _Requirements: 2.5_
   
-  - [ ] 8.4 Implement delete conversation
+  - [x] 8.4 Implement delete conversation
     - Show confirmation (optional)
     - Delete conversation file
     - Update conversations list
@@ -123,13 +123,13 @@
 
 ## Phase 4: Message Context Menu
 
-- [ ] 10. Add context menu state to ChatApp
+- [x] 10. Add context menu state to ChatApp
   - Add context_menu_state field
   - Add editing_message_index field
   - Add edit_message_content field
   - _Requirements: 1.1_
 
-- [ ] 11. Implement message right-click detection
+- [x] 11. Implement message right-click detection
   - Wrap message bubbles in mouse_area widget
   - Detect right-click events
   - Store message index and cursor position

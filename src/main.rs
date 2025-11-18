@@ -5,7 +5,9 @@ use std::fs;
 mod app;
 mod config;
 mod conversation;
+mod icons;
 mod markdown;
+mod search;
 
 use app::ChatApp;
 use config::AppConfig;

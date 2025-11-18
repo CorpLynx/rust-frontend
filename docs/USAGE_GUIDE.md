@@ -2,13 +2,13 @@
 
 ## Quick Start
 
-After running `cargo run`, you'll see the updated AI Chat interface with new controls in the header.
+After running `cargo run`, you'll see the Prometheus interface with new controls in the header.
 
 ## Interface Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  AI Chat Interface          🌙  [Clear Chat]                │  ← Header with new buttons
+│  Prometheus                 🌙  [Clear Chat]                │  ← Header with new buttons
 ├─────────────────────────────────────────────────────────────┤
 │  [Error messages appear here if any]                        │
 ├─────────────────────────────────────────────────────────────┤

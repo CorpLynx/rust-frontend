@@ -1,13 +1,14 @@
 use crate::config::{AppConfig, ColorTheme};
 use crate::conversation::{Conversation, ConversationManager, ConversationMetadata};
 use crate::markdown::{parse_message, MessageSegment};
+use crate::search::SearchEngine;
 use iced::{
     alignment, executor,
     widget::{
-        button, column, container, pick_list, row, scrollable, text, text_input, Column, Row,
+        button, column, container, pick_list, row, scrollable, text, text_input, Column,
     },
     Alignment, Application, Command, Element, Length, Subscription, Theme,
-    Color, Background, Border, time,
+    Color, Background, Border, Point,
 };
 use log::{error, info};
 use serde::{Deserialize, Serialize};
@@ -79,9 +80,22 @@ pub enum Message {
     SaveConversation,
     ConversationSaved(Result<(), String>),
     DeleteConversation(String),
+    // Conversation context menu
+    ShowConversationContextMenu(String, Point),
+    HideConversationContextMenu,
+    StartRenameConversation(String),
+    UpdateConversationName(String),
+    ConfirmRenameConversation,
+    CancelRenameConversation,
     // Code block actions
     CopyCodeBlock(String),
     CodeBlockCopied,
+    // Message context menu
+    ShowMessageContextMenu(usize, Point), // (message_index, position)
+    HideMessageContextMenu,
+    // Search indexing
+    BuildSearchIndex,
+    SearchIndexBuilt(Result<Vec<Conversation>, String>),
 }
 
 pub struct ChatApp {
@@ -109,8 +123,19 @@ pub struct ChatApp {
     conversation_manager: ConversationManager,
     active_conversation_id: Option<String>,
     conversations: Vec<ConversationMetadata>,
+    // Conversation context menu
+    conversation_context_menu: Option<(String, Point)>, // (conversation_id, position)
+    renaming_conversation_id: Option<String>,
+    rename_input: String,
     // Code block state
     copied_code_block: Option<usize>,
+    // Message context menu state
+    context_menu_state: Option<(usize, Point)>, // (message_index, position)
+    editing_message_index: Option<usize>,
+    edit_message_content: String,
+    // Search engine
+    search_engine: SearchEngine,
+    indexing_progress: Option<(usize, usize)>, // (current, total)
 }
 
 impl ChatApp {
@@ -148,7 +173,15 @@ impl ChatApp {
             conversation_manager: ConversationManager::new(),
             active_conversation_id: None,
             conversations: Vec::new(),
+            conversation_context_menu: None,
+            renaming_conversation_id: None,
+            rename_input: String::new(),
             copied_code_block: None,
+            context_menu_state: None,
+            editing_message_index: None,
+            edit_message_content: String::new(),
+            search_engine: SearchEngine::new(),
+            indexing_progress: None,
         }
     }
 
@@ -160,6 +193,26 @@ impl ChatApp {
                     .map_err(|e| format!("Failed to load conversations: {}", e))
             },
             |result| Message::ConversationsLoaded(result),
+        )
+    }
+
+    fn build_search_index() -> Command<Message> {
+        Command::perform(
+            async move {
+                let manager = ConversationManager::new();
+                let conversations_metadata = manager.list_conversations()
+                    .map_err(|e| format!("Failed to load conversations: {}", e))?;
+                
+                let mut conversations = Vec::new();
+                for metadata in conversations_metadata {
+                    if let Ok(conversation) = manager.load_conversation(&metadata.id) {
+                        conversations.push(conversation);
+                    }
+                }
+                
+                Ok(conversations)
+            },
+            |result| Message::SearchIndexBuilt(result),
         )
     }
 
@@ -404,6 +457,7 @@ impl Application for ChatApp {
                 Self::load_history(),
                 Self::fetch_models(ollama_url),
                 Self::load_conversations(),
+                Self::build_search_index(),
             ]),
         )
     }
@@ -775,6 +829,34 @@ impl Application for ChatApp {
                 }
                 Command::none()
             }
+            Message::SearchIndexBuilt(result) => {
+                match result {
+                    Ok(conversations) => {
+                        let count = conversations.len();
+                        info!("Indexing {} conversations...", count);
+                        self.indexing_progress = Some((0, count));
+                        
+                        // Index all conversations
+                        for (idx, conversation) in conversations.iter().enumerate() {
+                            self.search_engine.index_conversation(conversation);
+                            self.indexing_progress = Some((idx + 1, count));
+                        }
+                        
+                        info!("Search index built successfully with {} conversations", count);
+                        self.indexing_progress = None;
+                    }
+                    Err(e) => {
+                        error!("Failed to build search index: {}", e);
+                        self.indexing_progress = None;
+                    }
+                }
+                Command::none()
+            }
+            Message::BuildSearchIndex => {
+                info!("Building search index...");
+                self.indexing_progress = Some((0, 0));
+                Self::build_search_index()
+            }
             Message::SaveConversation => {
                 if let Some(id) = &self.active_conversation_id {
                     let manager = self.conversation_manager.clone();
@@ -855,6 +937,66 @@ impl Application for ChatApp {
                 // Reset copied state after 2 seconds
                 Command::none()
             }
+            Message::ShowConversationContextMenu(id, position) => {
+                self.conversation_context_menu = Some((id, position));
+                Command::none()
+            }
+            Message::HideConversationContextMenu => {
+                self.conversation_context_menu = None;
+                Command::none()
+            }
+            Message::StartRenameConversation(id) => {
+                // Find the conversation and pre-fill the rename input
+                if let Some(conv) = self.conversations.iter().find(|c| c.id == id) {
+                    self.rename_input = conv.name.clone();
+                    self.renaming_conversation_id = Some(id);
+                    self.conversation_context_menu = None;
+                }
+                Command::none()
+            }
+            Message::UpdateConversationName(name) => {
+                self.rename_input = name;
+                Command::none()
+            }
+            Message::ConfirmRenameConversation => {
+                if let Some(id) = &self.renaming_conversation_id {
+                    let manager = self.conversation_manager.clone();
+                    let conversation_id = id.clone();
+                    let new_name = self.rename_input.clone();
+                    
+                    // Clear rename state
+                    self.renaming_conversation_id = None;
+                    self.rename_input.clear();
+                    
+                    // Load conversation, update name, and save
+                    return Command::perform(
+                        async move {
+                            let mut conversation = manager.load_conversation(&conversation_id)
+                                .map_err(|e| format!("Failed to load conversation: {}", e))?;
+                            conversation.name = new_name;
+                            manager.save_conversation(&conversation)
+                                .map_err(|e| format!("Failed to save conversation: {}", e))?;
+                            manager.list_conversations()
+                                .map_err(|e| format!("Failed to reload conversations: {}", e))
+                        },
+                        |result| Message::ConversationsLoaded(result),
+                    );
+                }
+                Command::none()
+            }
+            Message::CancelRenameConversation => {
+                self.renaming_conversation_id = None;
+                self.rename_input.clear();
+                Command::none()
+            }
+            Message::ShowMessageContextMenu(index, position) => {
+                self.context_menu_state = Some((index, position));
+                Command::none()
+            }
+            Message::HideMessageContextMenu => {
+                self.context_menu_state = None;
+                Command::none()
+            }
         }
     }
 
@@ -867,54 +1009,19 @@ impl Application for ChatApp {
         let muted_color = Color::from_rgb(sr, sg, sb); // Theme secondary color
 
         let chat_display: Element<_> = if self.chat_history.is_empty() {
-            // ASCII art animation - rotating frames with glowing ONLINE text
+            // ASCII art - PROMETHEUS
             let glow_color = Color::from_rgb(pr, pg, pb); // Theme primary color
             
-            let frames_top = vec![
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-                "╔═══════════════════════════╗\n║    Frontend build v0.2    ║\n║                           ║",
-            ];
-            
-            let frames_online = vec![
-                "║      [  ONLINE  ]         ║",
-                "║      [ >ONLINE  ]         ║",
-                "║      [ >>ONLINE ]         ║",
-                "║      [ >>>ONLINE]         ║",
-                "║      [  ONLINE>>>]        ║",
-                "║      [  ONLINE>> ]        ║",
-                "║      [  ONLINE>  ]        ║",
-            ];
-            
-            let frames_bottom = vec![
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-                "║                           ║\n║   > awaiting input...     ║\n╚═══════════════════════════╝",
-            ];
-
-            let frame_index = (self.animation_offset / 5) % frames_online.len();
+            let ascii_art = r#"   ________  ________  ________  ________  ________  ________  ________  ________  ________  ________ 
+  /        \/        \/        \/        \/        \/        \/    /   \/        \/    /   \/        \
+ /         /         /         /         /         /        _/         /         /         /        _/
+//      __/        _/         /         /        _//       //         /        _/         /-        / 
+\\_____/  \____/___/\________/\__/__/__/\________/ \______/ \___/____/\________/\________/\________/  "#;
 
             container(
-                column![
-                    text(frames_top[frame_index])
-                        .size(self.config.ui.font_size - 2)
-                        .style(iced::theme::Text::Color(muted_color)),
-                    text(frames_online[frame_index])
-                        .size(self.config.ui.font_size - 2)
-                        .style(iced::theme::Text::Color(glow_color)),
-                    text(frames_bottom[frame_index])
-                        .size(self.config.ui.font_size - 2)
-                        .style(iced::theme::Text::Color(muted_color)),
-                ]
-                .spacing(0)
+                text(ascii_art)
+                    .size(self.config.ui.font_size - 2)
+                    .style(iced::theme::Text::Color(glow_color))
             )
             .width(Length::Fill)
             .height(Length::Fill)
@@ -1045,13 +1152,19 @@ impl Application for ChatApp {
                         iced::theme::Container::Custom(Box::new(AIMessageStyle))
                     });
 
+                // Wrap message bubble in mouse_area for right-click detection
+                use iced::widget::mouse_area;
+                
+                let message_with_context = mouse_area(message_bubble)
+                    .on_right_press(Message::ShowMessageContextMenu(msg_idx, Point::ORIGIN));
+
                 // Align user messages to the right, AI to the left
                 let message_row = if is_user {
-                    container(message_bubble)
+                    container(message_with_context)
                         .width(Length::Fill)
                         .align_x(alignment::Horizontal::Right)
                 } else {
-                    container(message_bubble)
+                    container(message_with_context)
                         .width(Length::Fill)
                         .align_x(alignment::Horizontal::Left)
                 };
@@ -1272,24 +1385,24 @@ impl Application for ChatApp {
 
         // Burger menu button
         let burger_button = button(
-            text("[≡]")
-                .size(self.config.ui.font_size)
+            text("≡")
+                .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::ToggleSidebar)
         .padding(8)
         .style(iced::theme::Button::Text);
 
         let new_chat_button = button(
-            text("[+]")
-                .size(self.config.ui.font_size)
+            text("+")
+                .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::NewConversation)
         .padding(8)
         .style(iced::theme::Button::Text);
 
         let settings_button = button(
-            text("[*]")
-                .size(self.config.ui.font_size)
+            text("*")
+                .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::ToggleSettings)
         .padding(8)
@@ -1309,7 +1422,7 @@ impl Application for ChatApp {
                 .width(Length::FillPortion(2))
                 .align_x(alignment::Horizontal::Left),
                 container(
-                    text("Frontend build")
+                    text("Prometheus")
                         .size(self.config.ui.font_size)
                         .style(iced::theme::Text::Color(header_text_color))
                 )
@@ -1353,44 +1466,102 @@ impl Application for ChatApp {
             // Add each conversation
             for conv in &self.conversations {
                 let is_active = self.active_conversation_id.as_ref() == Some(&conv.id);
+                let is_renaming = self.renaming_conversation_id.as_ref() == Some(&conv.id);
+                let show_context_menu = self.conversation_context_menu.as_ref()
+                    .map(|(id, _)| id == &conv.id)
+                    .unwrap_or(false);
                 
-                // Delete button for this conversation
-                let delete_btn = button(text("×").size(self.config.ui.font_size + 2))
-                    .on_press(Message::DeleteConversation(conv.id.clone()))
-                    .padding(4)
-                    .style(iced::theme::Button::Text);
-                
-                let conv_content = column![
-                    row![
-                        text(&conv.name)
+                if is_renaming {
+                    // Show rename input
+                    let rename_content = column![
+                        text_input("Conversation name", &self.rename_input)
+                            .on_input(Message::UpdateConversationName)
+                            .on_submit(Message::ConfirmRenameConversation)
                             .size(self.config.ui.font_size - 2)
-                            .style(iced::theme::Text::Color(if is_active { header_text_color } else { text_color }))
-                            .width(Length::Fill),
-                        delete_btn
+                            .padding(8)
+                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
+                        row![
+                            button(text("Save").size(self.config.ui.font_size - 4))
+                                .on_press(Message::ConfirmRenameConversation)
+                                .padding(4)
+                                .style(iced::theme::Button::Primary),
+                            button(text("Cancel").size(self.config.ui.font_size - 4))
+                                .on_press(Message::CancelRenameConversation)
+                                .padding(4)
+                                .style(iced::theme::Button::Text),
+                        ]
+                        .spacing(4)
+                        .align_items(Alignment::Center)
                     ]
-                    .align_items(Alignment::Center)
-                    .spacing(4),
-                    text(&conv.preview)
-                        .size(self.config.ui.font_size - 4)
-                        .style(iced::theme::Text::Color(muted_color))
-                ]
-                .spacing(4);
-                
-                let conv_item = container(conv_content)
-                    .padding(8)
-                    .width(Length::Fill)
-                    .style(if is_active {
-                        iced::theme::Container::Custom(Box::new(ActiveConversationStyle))
+                    .spacing(4);
+                    
+                    let rename_item = container(rename_content)
+                        .padding(8)
+                        .width(Length::Fill)
+                        .style(iced::theme::Container::Custom(Box::new(ActiveConversationStyle)));
+                    
+                    conversations_column = conversations_column.push(rename_item);
+                } else {
+                    // Show context menu if this conversation is right-clicked
+                    if show_context_menu {
+                        let menu_content = column![
+                            button(text("Rename").size(self.config.ui.font_size - 2))
+                                .on_press(Message::StartRenameConversation(conv.id.clone()))
+                                .width(Length::Fill)
+                                .padding(6)
+                                .style(iced::theme::Button::Text),
+                            button(text("Delete").size(self.config.ui.font_size - 2))
+                                .on_press(Message::DeleteConversation(conv.id.clone()))
+                                .width(Length::Fill)
+                                .padding(6)
+                                .style(iced::theme::Button::Text),
+                        ]
+                        .spacing(2);
+                        
+                        let context_menu = container(menu_content)
+                            .padding(4)
+                            .width(Length::Fill)
+                            .style(iced::theme::Container::Custom(Box::new(ContextMenuStyle::new(&self.current_theme))));
+                        
+                        conversations_column = conversations_column.push(context_menu);
                     } else {
-                        iced::theme::Container::Custom(Box::new(ConversationItemStyle))
-                    });
+                        // Show normal conversation item with right-click button
+                        let conv_content = column![
+                            row![
+                                text(&conv.name)
+                                    .size(self.config.ui.font_size - 2)
+                                    .style(iced::theme::Text::Color(if is_active { header_text_color } else { text_color }))
+                                    .width(Length::Fill),
+                                button(text("...").size(self.config.ui.font_size - 2))
+                                    .on_press(Message::ShowConversationContextMenu(conv.id.clone(), Point::new(0.0, 0.0)))
+                                    .padding(2)
+                                    .style(iced::theme::Button::Text),
+                            ]
+                            .align_items(Alignment::Center)
+                            .spacing(4),
+                            text(&conv.preview)
+                                .size(self.config.ui.font_size - 4)
+                                .style(iced::theme::Text::Color(muted_color))
+                        ]
+                        .spacing(4);
+                        
+                        let conv_item = container(conv_content)
+                            .padding(8)
+                            .width(Length::Fill)
+                            .style(if is_active {
+                                iced::theme::Container::Custom(Box::new(ActiveConversationStyle))
+                            } else {
+                                iced::theme::Container::Custom(Box::new(ConversationItemStyle))
+                            });
 
-                let conv_button = button(conv_item)
-                    .on_press(Message::LoadConversation(conv.id.clone()))
-                    .width(Length::Fill)
-                    .style(iced::theme::Button::Text);
+                        let conv_button = button(conv_item)
+                            .on_press(Message::LoadConversation(conv.id.clone()))
+                            .width(Length::Fill)
+                            .style(iced::theme::Button::Text);
 
-                conversations_column = conversations_column.push(conv_button);
+                        conversations_column = conversations_column.push(conv_button);
+                    }
+                }
             }
 
             container(
@@ -2125,6 +2296,35 @@ impl iced::widget::scrollable::StyleSheet for CustomScrollbarStyle {
                 },
             },
             gap: None,
+        }
+    }
+}
+
+struct ContextMenuStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl ContextMenuStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
+
+impl iced::widget::container::StyleSheet for ContextMenuStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        let (pr, pg, pb) = self.primary_color;
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(0.05, 0.05, 0.08, 0.98))),
+            border: Border {
+                color: Color::from_rgba(pr, pg, pb, 0.8),
+                width: 1.5,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
         }
     }
 }
