@@ -24,3 +24,7 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 syntect = "5.1"
 regex = "1.10"
 
+[dev-dependencies]
+quickcheck = "1.0"
+quickcheck_macros = "1.0"
+

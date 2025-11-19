@@ -1,4 +1,5 @@
 use crate::search::SearchResult;
+use regex::Regex;
 use std::collections::HashMap;
 
 /// Represents a search query with various options
@@ -71,6 +72,52 @@ impl SearchQuery {
         });
 
         results
+    }
+
+    /// Search directly in message content (for case-sensitive and whole-word searches)
+    pub fn search_in_content(&self, text: &str) -> Vec<(usize, usize)> {
+        if self.text.is_empty() {
+            return Vec::new();
+        }
+
+        let mut positions = Vec::new();
+
+        if self.whole_word {
+            // Use regex for whole word matching
+            let pattern = if self.case_sensitive {
+                format!(r"\b{}\b", regex::escape(&self.text))
+            } else {
+                format!(r"(?i)\b{}\b", regex::escape(&self.text))
+            };
+
+            if let Ok(re) = Regex::new(&pattern) {
+                for mat in re.find_iter(text) {
+                    positions.push((mat.start(), mat.end()));
+                }
+            }
+        } else {
+            // Simple substring search
+            let search_text = if self.case_sensitive {
+                text.to_string()
+            } else {
+                text.to_lowercase()
+            };
+            
+            let search_term = if self.case_sensitive {
+                self.text.clone()
+            } else {
+                self.text.to_lowercase()
+            };
+
+            let mut start = 0;
+            while let Some(pos) = search_text[start..].find(&search_term) {
+                let absolute_pos = start + pos;
+                positions.push((absolute_pos, absolute_pos + search_term.len()));
+                start = absolute_pos + 1;
+            }
+        }
+
+        positions
     }
 
     /// Set case sensitivity

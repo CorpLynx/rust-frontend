@@ -11,6 +11,12 @@ Cargo.lock
 *.swo
 *~
 
+
+# Kiro specs
+
+.kiro/specs
+
+
 # Logs
 logs/
 *.log
@@ -23,3 +29,6 @@ conversations/
 .DS_Store
 Thumbs.db
 
+# historical screenshots
+
+Screenshot*

@@ -27,43 +27,43 @@
   - Display progress indicator for large datasets
   - _Requirements: 1.1_
 
-- [ ] 3. Implement search query processing
-- [ ] 3.1 Create search method
+- [x] 3. Implement search query processing
+- [x] 3.1 Create search method
   - Implement case-sensitive and case-insensitive search
   - Support whole-word matching
   - Return results with match positions
   - _Requirements: 1.2_
 
-- [ ] 3.2 Implement result highlighting
+- [x] 3.2 Implement result highlighting
   - Create highlight_matches function
   - Generate TextSegments with highlighted regions
   - _Requirements: 1.3_
 
-- [ ] 4. Create search UI
-- [ ] 4.1 Add search bar to header
+- [x] 4. Create search UI
+- [x] 4.1 Add search bar to header
   - Create floating search input field
   - Add search icon button
   - Style with hacker theme
   - _Requirements: 1.1_
 
-- [ ] 4.2 Implement search results display
+- [x] 4.2 Implement search results display
   - Show result count in search bar
   - Display matching messages with highlights
   - Add navigation arrows for results
   - _Requirements: 1.3, 1.5_
 
-- [ ] 4.3 Add search state management
+- [x] 4.3 Add search state management
   - Add search_active, search_query, search_results to ChatApp
   - Handle search input changes
   - Debounce search queries (300ms)
   - _Requirements: 1.2_
 
-- [ ] 4.4 Implement search clear functionality
+- [x] 4.4 Implement search clear functionality
   - Add clear button to search bar
   - Restore full conversation view
   - _Requirements: 1.4_
 
-- [ ]* 5. Write search tests
+- [x] 5. Write search tests
   - Test indexing with various message types
   - Test case-sensitive and case-insensitive search
   - Test result highlighting

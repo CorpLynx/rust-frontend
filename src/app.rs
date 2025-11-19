@@ -1,5 +1,6 @@
 use crate::config::{AppConfig, ColorTheme};
 use crate::conversation::{Conversation, ConversationManager, ConversationMetadata};
+use crate::icons;
 use crate::markdown::{parse_message, MessageSegment};
 use crate::search::SearchEngine;
 use iced::{
@@ -73,6 +74,9 @@ pub enum Message {
     OllamaUrlChanged(String),
     ThemeSelected(String),
     SaveSettings,
+    SetLocalOllama,
+    SelectSavedUrl(String),
+    DeleteSavedUrl(String),
     // Conversation management
     NewConversation,
     LoadConversation(String),
@@ -119,6 +123,7 @@ pub struct ChatApp {
     available_themes: Vec<String>,
     temp_theme: String,
     current_theme: ColorTheme,
+    selected_saved_url: Option<String>,
     // Conversation management
     conversation_manager: ConversationManager,
     active_conversation_id: Option<String>,
@@ -170,6 +175,7 @@ impl ChatApp {
             available_themes: available_themes.clone(),
             temp_theme: String::new(),
             current_theme,
+            selected_saved_url: None,
             conversation_manager: ConversationManager::new(),
             active_conversation_id: None,
             conversations: Vec::new(),
@@ -448,6 +454,9 @@ impl Application for ChatApp {
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
+        // Load configuration from config.toml, including saved URLs
+        // If config is missing or corrupted, use default values
+        // Requirement 3.5: Saved URLs are loaded on app startup and handled gracefully
         let config = AppConfig::load().unwrap_or_default();
         let ollama_url = config.backend.ollama_url.clone();
         let app = Self::create(config);
@@ -738,6 +747,9 @@ impl Application for ChatApp {
                 self.config.backend.ollama_url = self.temp_ollama_url.clone();
                 self.config.ui.theme = self.temp_theme.clone();
                 
+                // Add backend URL to saved URLs (only non-localhost URLs)
+                self.config.backend.add_saved_url(self.temp_backend_url.clone());
+                
                 // Update current theme if changed
                 if theme_changed {
                     self.current_theme = ColorTheme::from_string(&self.temp_theme);
@@ -762,6 +774,39 @@ impl Application for ChatApp {
                         self.error_message = Some(error_msg);
                     }
                 }
+                Command::none()
+            }
+            Message::SetLocalOllama => {
+                self.temp_ollama_url = crate::config::BackendSettings::LOCAL_OLLAMA_URL.to_string();
+                Command::none()
+            }
+            Message::SelectSavedUrl(url) => {
+                self.temp_backend_url = url.clone();
+                self.selected_saved_url = Some(url);
+                Command::none()
+            }
+            Message::DeleteSavedUrl(url) => {
+                // Remove URL from saved list
+                self.config.backend.remove_saved_url(&url);
+                
+                // Clear temp_backend_url if it was the deleted URL
+                if self.temp_backend_url == url {
+                    self.temp_backend_url.clear();
+                }
+                
+                // Clear selected_saved_url if it was the deleted URL
+                if self.selected_saved_url.as_ref() == Some(&url) {
+                    self.selected_saved_url = None;
+                }
+                
+                // Persist config immediately
+                if let Err(e) = self.config.save() {
+                    let error_msg = format!("Failed to save settings after deletion: {}", e);
+                    error!("{}", error_msg);
+                    self.log_error(&error_msg);
+                    self.error_message = Some(error_msg);
+                }
+                
                 Command::none()
             }
             Message::NewConversation => {
@@ -1139,6 +1184,18 @@ impl Application for ChatApp {
                                 .spacing(8)
                             );
                         }
+                        MessageSegment::Highlighted(t) => {
+                            // Render highlighted text with a background color
+                            message_content = message_content.push(
+                                container(
+                                    text(t)
+                                        .size(self.config.ui.font_size)
+                                        .style(iced::theme::Text::Color(Color::BLACK))
+                                )
+                                .padding(2)
+                                .style(iced::theme::Container::Custom(Box::new(HighlightStyle::new(&self.current_theme))))
+                            );
+                        }
                     }
                 }
 
@@ -1283,6 +1340,18 @@ impl Application for ChatApp {
                                     .spacing(8)
                                 );
                             }
+                            MessageSegment::Highlighted(t) => {
+                                // Render highlighted text with a background color
+                                streaming_content = streaming_content.push(
+                                    container(
+                                        text(t)
+                                            .size(self.config.ui.font_size)
+                                            .style(iced::theme::Text::Color(Color::BLACK))
+                                    )
+                                    .padding(2)
+                                    .style(iced::theme::Container::Custom(Box::new(HighlightStyle::new(&self.current_theme))))
+                                );
+                            }
                         }
                     }
                     
@@ -1385,7 +1454,7 @@ impl Application for ChatApp {
 
         // Burger menu button
         let burger_button = button(
-            text("≡")
+            text(icons::ICON_MENU)
                 .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::ToggleSidebar)
@@ -1393,7 +1462,7 @@ impl Application for ChatApp {
         .style(iced::theme::Button::Text);
 
         let new_chat_button = button(
-            text("+")
+            text(icons::ICON_PLUS)
                 .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::NewConversation)
@@ -1401,7 +1470,7 @@ impl Application for ChatApp {
         .style(iced::theme::Button::Text);
 
         let settings_button = button(
-            text("*")
+            text(icons::ICON_SETTINGS)
                 .size(self.config.ui.font_size + 4)
         )
         .on_press(Message::ToggleSettings)
@@ -1593,31 +1662,115 @@ impl Application for ChatApp {
 
         // Settings modal overlay
         if self.settings_open {
+            // Build saved URLs dropdown with delete buttons
+            let mut backend_url_section = column![
+                text("Backend URL:")
+                    .size(self.config.ui.font_size - 2)
+                    .style(iced::theme::Text::Color(muted_color)),
+            ]
+            .spacing(8);
+            
+            // Add saved URLs dropdown if there are any saved URLs
+            if !self.config.backend.saved_urls.is_empty() {
+                let mut saved_urls_column = Column::new().spacing(4);
+                
+                for url in &self.config.backend.saved_urls {
+                    let url_row = row![
+                        button(
+                            text(url)
+                                .size(self.config.ui.font_size - 2)
+                                .style(iced::theme::Text::Color(text_color))
+                        )
+                        .on_press(Message::SelectSavedUrl(url.clone()))
+                        .width(Length::Fill)
+                        .padding(8)
+                        .style(iced::theme::Button::Text),
+                        button(
+                            text(icons::ICON_DELETE)
+                                .size(self.config.ui.font_size - 2)
+                                .style(iced::theme::Text::Color(Color::from_rgb(1.0, 0.2, 0.4)))
+                        )
+                        .on_press(Message::DeleteSavedUrl(url.clone()))
+                        .padding(8)
+                        .style(iced::theme::Button::Text),
+                    ]
+                    .spacing(4)
+                    .align_items(Alignment::Center);
+                    
+                    saved_urls_column = saved_urls_column.push(url_row);
+                }
+                
+                let saved_urls_container = container(
+                    scrollable(saved_urls_column)
+                        .height(Length::Fixed(120.0))
+                )
+                .padding(8)
+                .width(Length::Fill)
+                .style(iced::theme::Container::Custom(Box::new(SavedUrlsDropdownStyle::new(&self.current_theme))));
+                
+                backend_url_section = backend_url_section.push(
+                    column![
+                        text("Saved URLs:")
+                            .size(self.config.ui.font_size - 3)
+                            .style(iced::theme::Text::Color(muted_color)),
+                        saved_urls_container
+                    ]
+                    .spacing(4)
+                );
+            }
+            
+            backend_url_section = backend_url_section.push(
+                text_input("http://localhost:8000/generate", &self.temp_backend_url)
+                    .on_input(Message::BackendUrlChanged)
+                    .size(self.config.ui.font_size)
+                    .padding(12)
+                    .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme))))
+            );
+            
+            // Check if local mode is active
+            let is_local_mode = self.temp_ollama_url == crate::config::BackendSettings::LOCAL_OLLAMA_URL;
+            
+            // Build Ollama URL section with Local button
+            let local_button = button(
+                row![
+                    text(icons::ICON_LOCAL)
+                        .size(self.config.ui.font_size - 2),
+                    text("Local")
+                        .size(self.config.ui.font_size - 2)
+                ]
+                .spacing(4)
+                .align_items(Alignment::Center)
+            )
+            .on_press(Message::SetLocalOllama)
+            .padding(8)
+            .style(if is_local_mode {
+                iced::theme::Button::Primary
+            } else {
+                iced::theme::Button::Secondary
+            });
+            
+            let ollama_url_row = row![
+                text_input("http://localhost:11434", &self.temp_ollama_url)
+                    .on_input(Message::OllamaUrlChanged)
+                    .size(self.config.ui.font_size)
+                    .padding(12)
+                    .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
+                local_button
+            ]
+            .spacing(8)
+            .align_items(Alignment::Center);
+            
             let settings_panel = container(
                 column![
                     text("[ SETTINGS ]")
                         .size(self.config.ui.font_size + 4)
                         .style(iced::theme::Text::Color(header_text_color)),
-                    column![
-                        text("Backend URL:")
-                            .size(self.config.ui.font_size - 2)
-                            .style(iced::theme::Text::Color(muted_color)),
-                        text_input("http://localhost:8000/generate", &self.temp_backend_url)
-                            .on_input(Message::BackendUrlChanged)
-                            .size(self.config.ui.font_size)
-                            .padding(12)
-                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
-                    ]
-                    .spacing(8),
+                    backend_url_section,
                     column![
                         text("Ollama URL:")
                             .size(self.config.ui.font_size - 2)
                             .style(iced::theme::Text::Color(muted_color)),
-                        text_input("http://localhost:11434", &self.temp_ollama_url)
-                            .on_input(Message::OllamaUrlChanged)
-                            .size(self.config.ui.font_size)
-                            .padding(12)
-                            .style(iced::theme::TextInput::Custom(Box::new(HackerInputStyle::new(&self.current_theme)))),
+                        ollama_url_row,
                     ]
                     .spacing(8),
                     column![
@@ -1653,7 +1806,7 @@ impl Application for ChatApp {
                 ]
                 .spacing(20)
                 .padding(30)
-                .width(Length::Fixed(500.0)),
+                .width(Length::Fixed(550.0)),
             )
             .style(iced::theme::Container::Custom(Box::new(SettingsPanelStyle)))
             .center_x()
@@ -2129,6 +2282,36 @@ impl iced::widget::container::StyleSheet for SettingsPanelStyle {
     }
 }
 
+// Saved URLs dropdown style
+struct SavedUrlsDropdownStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl SavedUrlsDropdownStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
+
+impl iced::widget::container::StyleSheet for SavedUrlsDropdownStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        let (pr, pg, pb) = self.primary_color;
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(0.08, 0.08, 0.12, 0.8))),
+            border: Border {
+                color: Color::from_rgba(pr, pg, pb, 0.3),
+                width: 1.0,
+                radius: 8.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
 // Code block styles
 struct CodeBlockStyle {
     primary_color: (f32, f32, f32),
@@ -2182,6 +2365,35 @@ impl iced::widget::container::StyleSheet for InlineCodeStyle {
                 color: Color::from_rgba(pr, pg, pb, 0.0),
                 width: 0.0,
                 radius: 4.0.into(),
+            },
+            ..Default::default()
+        }
+    }
+}
+
+struct HighlightStyle {
+    primary_color: (f32, f32, f32),
+}
+
+impl HighlightStyle {
+    fn new(theme: &ColorTheme) -> Self {
+        Self {
+            primary_color: theme.primary_color(),
+        }
+    }
+}
+
+impl iced::widget::container::StyleSheet for HighlightStyle {
+    type Style = iced::Theme;
+
+    fn appearance(&self, _style: &Self::Style) -> iced::widget::container::Appearance {
+        let (pr, pg, pb) = self.primary_color;
+        iced::widget::container::Appearance {
+            background: Some(Background::Color(Color::from_rgba(pr, pg, pb, 0.4))),
+            border: Border {
+                color: Color::from_rgba(pr, pg, pb, 0.0),
+                width: 0.0,
+                radius: 2.0.into(),
             },
             ..Default::default()
         }

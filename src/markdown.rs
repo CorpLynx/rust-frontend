@@ -9,6 +9,7 @@ pub enum MessageSegment {
     Bold(String),
     Italic(String),
     ListItem(String),
+    Highlighted(String), // For search result highlighting
 }
 
 static CODE_BLOCK_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -30,8 +31,6 @@ static ITALIC_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 pub fn parse_message(content: &str) -> Vec<MessageSegment> {
     let mut segments = Vec::new();
-    let mut remaining = content;
-    let mut last_end = 0;
 
     // First, extract code blocks
     let mut code_blocks = Vec::new();
@@ -84,7 +83,7 @@ fn parse_inline_formatting(text: &str) -> Vec<MessageSegment> {
         }
 
         // Parse inline code, bold, and italic
-        let mut current_line = line.to_string();
+        let current_line = line.to_string();
         let mut line_segments = Vec::new();
         let mut last_pos = 0;
 
@@ -252,4 +251,110 @@ mod tests {
         
         assert!(segments.iter().any(|s| matches!(s, MessageSegment::ListItem(_))));
     }
+
+    #[test]
+    fn test_highlight_matches() {
+        let text = "Hello world, hello again";
+        let positions = vec![(0, 5), (13, 18)];
+        let segments = super::highlight_matches(text, &positions);
+        
+        // Should have highlighted segments
+        assert!(segments.iter().any(|s| matches!(s, MessageSegment::Highlighted(_))));
+    }
+
+    #[test]
+    fn test_highlight_matches_empty() {
+        let text = "Hello world";
+        let positions = vec![];
+        let segments = super::highlight_matches(text, &positions);
+        
+        // Should return original text
+        assert_eq!(segments.len(), 1);
+        assert!(matches!(segments[0], MessageSegment::Text(_)));
+    }
+
+    #[test]
+    fn test_highlight_matches_overlapping() {
+        let text = "Hello world";
+        let positions = vec![(0, 5), (3, 8)];
+        let segments = super::highlight_matches(text, &positions);
+        
+        // Should handle overlapping positions
+        assert!(!segments.is_empty());
+    }
+}
+
+/// Highlight search matches in text by creating segments with highlighted regions
+pub fn highlight_matches(text: &str, positions: &[(usize, usize)]) -> Vec<MessageSegment> {
+    if positions.is_empty() {
+        return vec![MessageSegment::Text(text.to_string())];
+    }
+
+    let mut segments = Vec::new();
+    let mut sorted_positions = positions.to_vec();
+    
+    // Sort positions by start index
+    sorted_positions.sort_by_key(|&(start, _)| start);
+    
+    // Merge overlapping positions
+    let mut merged_positions = Vec::new();
+    let mut current_start = sorted_positions[0].0;
+    let mut current_end = sorted_positions[0].1;
+    
+    for &(start, end) in sorted_positions.iter().skip(1) {
+        if start <= current_end {
+            // Overlapping or adjacent, merge them
+            current_end = current_end.max(end);
+        } else {
+            // Non-overlapping, save current and start new
+            merged_positions.push((current_start, current_end));
+            current_start = start;
+            current_end = end;
+        }
+    }
+    merged_positions.push((current_start, current_end));
+    
+    // Build segments with highlighted regions
+    let mut last_pos = 0;
+    
+    for (start, end) in merged_positions {
+        // Ensure positions are within bounds
+        let start = start.min(text.len());
+        let end = end.min(text.len());
+        
+        if start >= end {
+            continue;
+        }
+        
+        // Add text before highlight
+        if start > last_pos {
+            let before_text = &text[last_pos..start];
+            if !before_text.is_empty() {
+                segments.push(MessageSegment::Text(before_text.to_string()));
+            }
+        }
+        
+        // Add highlighted text
+        let highlighted_text = &text[start..end];
+        if !highlighted_text.is_empty() {
+            segments.push(MessageSegment::Highlighted(highlighted_text.to_string()));
+        }
+        
+        last_pos = end;
+    }
+    
+    // Add remaining text after last highlight
+    if last_pos < text.len() {
+        let remaining_text = &text[last_pos..];
+        if !remaining_text.is_empty() {
+            segments.push(MessageSegment::Text(remaining_text.to_string()));
+        }
+    }
+    
+    // If no segments were created, return original text
+    if segments.is_empty() {
+        segments.push(MessageSegment::Text(text.to_string()));
+    }
+    
+    segments
 }

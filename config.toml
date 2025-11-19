@@ -7,6 +7,11 @@ window_height = 650.0
 url = "http://localhost:11434"
 ollama_url = "http://localhost:11434"
 timeout_seconds = 30
+saved_urls = [
+    "https://api.openai.com/v1",
+    "https://api.anthropic.com/v1",
+    "http://192.168.1.100:8000"
+]
 
 [ui]
 font_size = 16
