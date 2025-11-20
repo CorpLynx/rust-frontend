@@ -1,0 +1,7 @@
+node_modules/
+conversations/
+logs/
+*.log
+config.json
+chat_history.json
+.DS_Store
