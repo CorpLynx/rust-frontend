@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sidebar Test</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+        }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100vh;
+            background: #1a1a1a;
+            border-right: 1px solid #333;
+            padding: 20px;
+            z-index: 999;
+            transition: transform 300ms ease-in-out;
+        }
+        
+        .sidebar[data-state="closed"] {
+            transform: translateX(-100%);
+        }
+        
+        .sidebar[data-state="open"] {
+            transform: translateX(0);
+        }
+        
+        .hamburger-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 48px;
+            height: 48px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 1000;
+            color: #e0e0e0;
+            font-size: 24px;
+        }
+        
+        .content {
+            padding: 100px 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar" data-state="closed">
+        <h1>SIDEBAR</h1>
+        <p>This is the sidebar content</p>
+    </div>
+    
+    <button class="hamburger-btn" onclick="toggleSidebar()">☰</button>
+    
+    <div class="content">
+        <h1>Main Content</h1>
+        <p>Click the hamburger button to toggle the sidebar</p>
+    </div>
+    
+    <script>
+        let sidebarOpen = false;
+        const sidebar = document.querySelector('.sidebar');
+        
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            sidebar.setAttribute('data-state', sidebarOpen ? 'open' : 'closed');
+            console.log('Sidebar state:', sidebarOpen, sidebar.getAttribute('data-state'));
+        }
+    </script>
+</body>
+</html>

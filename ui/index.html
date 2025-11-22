@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prometheus Chat</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <a href="#message-input" class="skip-link">Skip to message input</a>
+    <div class="app">
+        <div class="backdrop" data-visible="false" aria-hidden="true"></div>
+        <aside class="sidebar" data-state="closed" role="navigation" aria-label="Conversations sidebar">
+            <div class="sidebar-header">
+                <h1>PROMETHEUS</h1>
+            </div>
+            <div class="sidebar-content">
+                <div class="model-selector">
+                    <label for="model-select">Model:</label>
+                    <select id="model-select" aria-label="Select AI model">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <nav class="conversations" aria-label="Conversations">
+                    <button id="new-chat-btn" class="new-chat-btn" aria-label="Create new chat">+ New Chat</button>
+                    <div id="conversation-list" role="list"></div>
+                </nav>
+                <button id="settings-btn" class="settings-btn" aria-label="Open settings">⚙️ Settings</button>
+            </div>
+        </aside>
+
+        <main class="chat-container" role="main">
+            <button id="hamburger-btn" class="hamburger-btn" aria-label="Toggle conversations menu" aria-expanded="false">
+                <span class="hamburger-icon" aria-hidden="true"></span>
+            </button>
+            <div id="messages" class="messages" role="log" aria-live="polite" aria-label="Chat messages"></div>
+            
+            <form class="input-container" aria-label="Message input form">
+                <input 
+                    type="text" 
+                    id="message-input" 
+                    class="message-input"
+                    placeholder="Type a message..." 
+                    autocomplete="off"
+                    aria-label="Type your message"
+                />
+                <button id="send-btn" type="submit" class="send-btn-circular" aria-label="Send message">
+                    <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </form>
+        </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mobile Responsive Test - Persona Bubbles</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Additional test styles */
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        
+        .test-info {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 255, 136, 0.9);
+            color: #0a0a0a;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            z-index: 10000;
+            max-width: 200px;
+        }
+        
+        .test-content {
+            padding: 20px;
+            padding-bottom: 120px; /* Space for input container */
+        }
+        
+        .test-section {
+            background: var(--bg-secondary);
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+        }
+        
+        .test-section h3 {
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <strong>Screen:</strong> <span id="screen-size"></span><br>
+        <strong>Viewport:</strong> <span id="viewport-size"></span><br>
+        <strong>Orientation:</strong> <span id="orientation"></span>
+    </div>
+    
+    <div class="test-content">
+        <div class="test-section">
+            <h3>Mobile Responsive Test</h3>
+            <p>This page tests the responsive behavior of persona bubbles on mobile devices.</p>
+            <p>Try the following:</p>
+            <ul>
+                <li>Tap the input field to bring up the keyboard</li>
+                <li>Verify persona bubbles don't overlap with keyboard</li>
+                <li>Test on different screen sizes</li>
+                <li>Test in portrait and landscape orientations</li>
+                <li>Verify touch targets are at least 44x44px</li>
+            </ul>
+        </div>
+        
+        <div class="test-section">
+            <h3>Persona Bubbles</h3>
+            <p>The persona bubbles should appear in the input container below.</p>
+            <p>On mobile (< 768px): 24px bubbles with 10px padding = 44px touch target</p>
+            <p>On tablet (768-1023px): 28px bubbles with 8px padding = 44px touch target</p>
+            <p>On desktop (≥ 1024px): 32px bubbles</p>
+        </div>
+        
+        <div class="test-section">
+            <h3>Test Instructions</h3>
+            <ol>
+                <li>Open this page on a mobile device or use browser dev tools</li>
+                <li>Resize the browser to different widths (320px, 375px, 768px, 1024px)</li>
+                <li>Tap the input field and verify the keyboard doesn't cover the bubbles</li>
+                <li>Try typing a message</li>
+                <li>Verify all persona bubbles are easily tappable</li>
+            </ol>
+        </div>
+    </div>
+    
+    <!-- Input Container with Persona Bubbles -->
+    <form class="input-container" onsubmit="return false;">
+        <input 
+            type="text" 
+            id="message-input" 
+            class="message-input"
+            placeholder="Type a message to test keyboard behavior..." 
+            autocomplete="off"
+        />
+        
+        <div class="persona-bubbles">
+            <button type="button" class="persona-bubble" aria-label="Default Assistant" title="Default Assistant">
+                🤖
+            </button>
+            <button type="button" class="persona-bubble" aria-label="Creative Writer" title="Creative Writer">
+                ✍️
+            </button>
+            <button type="button" class="persona-bubble" aria-label="Code Expert" title="Code Expert">
+                💻
+            </button>
+            <button type="button" class="persona-bubble active" aria-label="Data Analyst" title="Data Analyst">
+                📊
+            </button>
+        </div>
+        
+        <button type="submit" class="send-btn-circular">
+            <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </form>
+    
+    <script>
+        // Update screen info
+        function updateScreenInfo() {
+            document.getElementById('screen-size').textContent = 
+                `${window.screen.width}x${window.screen.height}`;
+            document.getElementById('viewport-size').textContent = 
+                `${window.innerWidth}x${window.innerHeight}`;
+            document.getElementById('orientation').textContent = 
+                window.innerWidth > window.innerHeight ? 'Landscape' : 'Portrait';
+        }
+        
+        updateScreenInfo();
+        window.addEventListener('resize', updateScreenInfo);
+        window.addEventListener('orientationchange', updateScreenInfo);
+        
+        // Add click handlers to persona bubbles
+        document.querySelectorAll('.persona-bubble').forEach(bubble => {
+            bubble.addEventListener('click', function() {
+                // Remove active from all bubbles
+                document.querySelectorAll('.persona-bubble').forEach(b => {
+                    b.classList.remove('active');
+                });
+                
+                // Toggle active on clicked bubble
+                if (!this.classList.contains('active')) {
+                    this.classList.add('active');
+                }
+            });
+        });
+        
+        // Log when keyboard appears (input focus)
+        const input = document.getElementById('message-input');
+        input.addEventListener('focus', () => {
+            console.log('Input focused - keyboard should appear');
+            console.log('Input container bottom:', 
+                document.querySelector('.input-container').getBoundingClientRect().bottom);
+            console.log('Viewport height:', window.innerHeight);
+        });
+        
+        input.addEventListener('blur', () => {
+            console.log('Input blurred - keyboard should hide');
+        });
+    </script>
+</body>
+</html>

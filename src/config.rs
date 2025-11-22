@@ -561,4 +561,70 @@ theme = "Hacker Green"
 
         TestResult::passed()
     }
+
+    /// **Feature: enhanced-settings-ui, Property 6: URL deletion removes from list**
+    /// **Validates: Requirements 5.2**
+    /// 
+    /// For any URL in the saved URLs list, after deletion, the URL should not appear
+    /// in the saved URLs list.
+    #[quickcheck]
+    fn prop_url_deletion_removes_from_list(urls: Vec<String>) -> TestResult {
+        // Filter out localhost URLs and ensure we have valid URLs
+        let valid_urls: Vec<String> = urls
+            .into_iter()
+            .filter(|url| !url.contains("localhost") && !url.contains("127.0.0.1"))
+            .filter(|url| !url.is_empty())
+            .filter(|url| url.chars().all(|c| c.is_ascii_graphic()))
+            .take(10) // Limit to 10 URLs (the max)
+            .enumerate()
+            .map(|(i, url)| format!("https://api{}.example.com/{}", i, url))
+            .collect();
+
+        if valid_urls.is_empty() {
+            return TestResult::discard();
+        }
+
+        let mut settings = BackendSettings {
+            url: "http://example.com".to_string(),
+            ollama_url: "http://localhost:11434".to_string(),
+            timeout_seconds: 30,
+            saved_urls: Vec::new(),
+        };
+
+        // Add all URLs to the list
+        for url in &valid_urls {
+            settings.add_saved_url(url.clone());
+        }
+
+        // Verify all URLs are present before deletion
+        for url in &valid_urls {
+            if !settings.saved_urls.contains(url) {
+                return TestResult::error("URL not added properly");
+            }
+        }
+
+        // Delete each URL and verify it's removed
+        for url in &valid_urls {
+            let initial_count = settings.saved_urls.len();
+            
+            settings.remove_saved_url(url);
+            
+            // The URL should no longer be in the list
+            if settings.saved_urls.contains(url) {
+                return TestResult::failed();
+            }
+            
+            // The list should be one element shorter
+            if settings.saved_urls.len() != initial_count - 1 {
+                return TestResult::failed();
+            }
+        }
+
+        // After deleting all URLs, the list should be empty
+        if !settings.saved_urls.is_empty() {
+            return TestResult::failed();
+        }
+
+        TestResult::passed()
+    }
 }

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Prometheus</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .debug-panel {
+            position: fixed;
+            bottom: 0;
+            right: 0;
+            background: #2a2a2a;
+            color: #e0e0e0;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 10000;
+            max-width: 400px;
+            border: 1px solid #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <div class="backdrop" data-visible="false"></div>
+        <aside class="sidebar" data-state="closed">
+            <div class="sidebar-header">
+                <h1>PROMETHEUS</h1>
+            </div>
+            <div class="sidebar-content">
+                <p>Sidebar content here</p>
+            </div>
+        </aside>
+
+        <main class="chat-container">
+            <button id="hamburger-btn" class="hamburger-btn">
+                <span class="hamburger-icon"></span>
+            </button>
+            <div id="messages" class="messages">
+                <p>Main content area</p>
+            </div>
+        </main>
+    </div>
+
+    <div class="debug-panel">
+        <div>Sidebar State: <span id="debug-state">closed</span></div>
+        <div>Is Animating: <span id="debug-animating">false</span></div>
+        <div>Transform: <span id="debug-transform">-</span></div>
+        <div>Z-Index: <span id="debug-zindex">-</span></div>
+        <button onclick="forceOpen()">Force Open</button>
+        <button onclick="forceClose()">Force Close</button>
+    </div>
+
+    <script>
+        const sidebar = document.querySelector('.sidebar');
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const backdrop = document.querySelector('.backdrop');
+        let sidebarOpen = false;
+        let isAnimating = false;
+
+        function updateDebug() {
+            document.getElementById('debug-state').textContent = sidebar.getAttribute('data-state');
+            document.getElementById('debug-animating').textContent = isAnimating;
+            const transform = window.getComputedStyle(sidebar).transform;
+            document.getElementById('debug-transform').textContent = transform;
+            const zIndex = window.getComputedStyle(sidebar).zIndex;
+            document.getElementById('debug-zindex').textContent = zIndex;
+        }
+
+        function toggleSidebar() {
+            console.log('Toggle clicked');
+            if (isAnimating) {
+                console.log('Animating, skipping');
+                return;
+            }
+            
+            if (sidebarOpen) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        }
+
+        function openSidebar() {
+            console.log('Opening sidebar');
+            isAnimating = true;
+            sidebarOpen = true;
+            sidebar.setAttribute('data-state', 'open');
+            hamburgerBtn.classList.add('active');
+            backdrop.setAttribute('data-visible', 'true');
+            updateDebug();
+        }
+
+        function closeSidebar() {
+            console.log('Closing sidebar');
+            isAnimating = true;
+            sidebarOpen = false;
+            sidebar.setAttribute('data-state', 'closed');
+            hamburgerBtn.classList.remove('active');
+            backdrop.setAttribute('data-visible', 'false');
+            updateDebug();
+        }
+
+        function forceOpen() {
+            sidebarOpen = false;
+            isAnimating = false;
+            openSidebar();
+        }
+
+        function forceClose() {
+            sidebarOpen = true;
+            isAnimating = false;
+            closeSidebar();
+        }
+
+        sidebar.addEventListener('transitionend', (e) => {
+            if (e.propertyName === 'transform') {
+                isAnimating = false;
+                updateDebug();
+            }
+        });
+
+        hamburgerBtn.addEventListener('click', toggleSidebar);
+
+        // Initial debug update
+        updateDebug();
+        setInterval(updateDebug, 1000);
+    </script>
+</body>
+</html>

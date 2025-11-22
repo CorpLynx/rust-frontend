@@ -41,12 +41,15 @@ fn main() -> Result<()> {
     // Load configuration for window size
     let config = AppConfig::load().unwrap_or_default();
     
-    // Run the application
+    // Run the application with Nerd Font loaded
     let result = ChatApp::run(iced::Settings {
         window: iced::window::Settings {
             size: iced::Size::new(config.app.window_width, config.app.window_height),
             ..Default::default()
         },
+        fonts: vec![
+            include_bytes!("../assets/fonts/FiraCodeNerdFont-Regular.ttf").as_slice().into(),
+        ],
         ..Default::default()
     });
 

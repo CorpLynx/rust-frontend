@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Persona Integration Test</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            padding: 20px;
+        }
+        .test-info {
+            background: var(--bg-secondary);
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .test-info h2 {
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+        .test-info p {
+            color: var(--text-secondary);
+            margin: 5px 0;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+        }
+        .status.success {
+            border-left: 4px solid var(--accent);
+        }
+        .status.error {
+            border-left: 4px solid #ff4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-info">
+        <h2>Persona Integration Test</h2>
+        <p>This page tests the persona bubble integration without Tauri backend.</p>
+        <p>Expected behavior:</p>
+        <ul>
+            <li>Persona bubbles should appear in the input container</li>
+            <li>Clicking a bubble should activate it (green highlight)</li>
+            <li>Clicking an active bubble should deactivate it</li>
+            <li>Only one bubble can be active at a time</li>
+        </ul>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <form class="input-container" aria-label="Message input form">
+        <input 
+            type="text" 
+            id="message-input" 
+            class="message-input"
+            placeholder="Type a message..." 
+            autocomplete="off"
+            aria-label="Type your message"
+        />
+        <button id="send-btn" type="submit" class="send-btn-circular" aria-label="Send message">
+            <svg class="send-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </button>
+    </form>
+
+    <script type="module">
+        // Mock personas data
+        const mockPersonas = [
+            {
+                id: "default",
+                name: "Default Assistant",
+                icon: "🤖",
+                system_prompt: "You are a helpful AI assistant.",
+                description: "General purpose assistant"
+            },
+            {
+                id: "creative-writer",
+                name: "Creative Writer",
+                icon: "✍️",
+                system_prompt: "You are a creative writing assistant.",
+                description: "Helps with creative writing tasks"
+            },
+            {
+                id: "code-expert",
+                name: "Code Expert",
+                icon: "💻",
+                system_prompt: "You are a programming expert.",
+                description: "Helps with coding tasks"
+            }
+        ];
+
+        // PersonaBubble Component
+        class PersonaBubble {
+            constructor(persona) {
+                this.persona = persona;
+                this.element = null;
+                this.isActive = false;
+                this.clickCallback = null;
+            }
+            
+            render() {
+                const button = document.createElement('button');
+                button.className = 'persona-bubble';
+                button.textContent = this.persona.icon;
+                button.setAttribute('aria-label', `Select ${this.persona.name} persona`);
+                button.setAttribute('aria-pressed', 'false');
+                button.setAttribute('role', 'button');
+                button.setAttribute('title', `${this.persona.name}${this.persona.description ? ': ' + this.persona.description : ''}`);
+                button.dataset.personaId = this.persona.id;
+                
+                // Add click handler
+                button.addEventListener('click', () => {
+                    if (this.clickCallback) {
+                        this.clickCallback(this.persona.id);
+                    }
+                });
+                
+                this.element = button;
+                return button;
+            }
+            
+            setActive(isActive) {
+                this.isActive = isActive;
+                if (this.element) {
+                    if (isActive) {
+                        this.element.classList.add('active');
+                        this.element.setAttribute('aria-pressed', 'true');
+                    } else {
+                        this.element.classList.remove('active');
+                        this.element.setAttribute('aria-pressed', 'false');
+                    }
+                }
+            }
+            
+            onClick(callback) {
+                this.clickCallback = callback;
+            }
+            
+            setDisabled(disabled) {
+                if (this.element) {
+                    this.element.disabled = disabled;
+                }
+            }
+        }
+
+        // PersonaBubbleContainer Component
+        class PersonaBubbleContainer {
+            constructor(personas, inputContainer) {
+                this.personas = personas;
+                this.inputContainer = inputContainer;
+                this.bubbles = [];
+                this.activePersonaId = null;
+                this.containerElement = null;
+            }
+            
+            render() {
+                // Create container element
+                const container = document.createElement('div');
+                container.className = 'persona-bubbles';
+                container.setAttribute('role', 'group');
+                container.setAttribute('aria-label', 'Persona selection');
+                
+                // Create persona bubbles
+                this.bubbles = this.personas.map(persona => {
+                    const bubble = new PersonaBubble(persona);
+                    const bubbleElement = bubble.render();
+                    
+                    // Set up click handler for persona selection
+                    bubble.onClick((personaId) => {
+                        this.handlePersonaClick(personaId);
+                    });
+                    
+                    container.appendChild(bubbleElement);
+                    return bubble;
+                });
+                
+                this.containerElement = container;
+                
+                // Append to input container
+                if (this.inputContainer) {
+                    this.inputContainer.appendChild(container);
+                }
+                
+                return container;
+            }
+            
+            handlePersonaClick(personaId) {
+                const statusDiv = document.getElementById('status');
+                
+                if (this.activePersonaId === personaId) {
+                    // Clicking active persona deselects it
+                    this.clearActivePersona();
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✓ Deselected persona: ${personaId}`;
+                } else {
+                    // Clicking inactive persona activates it
+                    this.setActivePersona(personaId);
+                    const persona = this.personas.find(p => p.id === personaId);
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✓ Selected persona: ${persona.name} (${persona.icon})`;
+                }
+            }
+            
+            setActivePersona(personaId) {
+                // Clear previous active state
+                this.bubbles.forEach(bubble => {
+                    bubble.setActive(false);
+                });
+                
+                // Set new active state
+                const activeBubble = this.bubbles.find(b => b.persona.id === personaId);
+                if (activeBubble) {
+                    activeBubble.setActive(true);
+                    this.activePersonaId = personaId;
+                }
+            }
+            
+            clearActivePersona() {
+                this.bubbles.forEach(bubble => {
+                    bubble.setActive(false);
+                });
+                this.activePersonaId = null;
+            }
+            
+            getActivePersona() {
+                if (!this.activePersonaId) {
+                    return null;
+                }
+                return this.personas.find(p => p.id === this.activePersonaId) || null;
+            }
+            
+            setDisabled(disabled) {
+                this.bubbles.forEach(bubble => {
+                    bubble.setDisabled(disabled);
+                });
+            }
+        }
+
+        // Initialize
+        const inputContainer = document.querySelector('.input-container');
+        const personaBubbleContainer = new PersonaBubbleContainer(mockPersonas, inputContainer);
+        personaBubbleContainer.render();
+
+        const statusDiv = document.getElementById('status');
+        statusDiv.className = 'status success';
+        statusDiv.textContent = '✓ Persona system initialized with ' + mockPersonas.length + ' personas';
+
+        // Test disable/enable
+        const sendBtn = document.getElementById('send-btn');
+        sendBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            statusDiv.className = 'status';
+            statusDiv.textContent = 'Simulating message send... (bubbles disabled)';
+            personaBubbleContainer.setDisabled(true);
+            
+            setTimeout(() => {
+                personaBubbleContainer.setDisabled(false);
+                statusDiv.className = 'status success';
+                statusDiv.textContent = '✓ Message sent (bubbles re-enabled)';
+            }, 2000);
+        });
+    </script>
+</body>
+</html>
