@@ -52,6 +52,102 @@
                 </button>
             </form>
         </main>
+
+        <!-- Settings Modal -->
+        <div id="settings-modal" class="settings-modal" role="dialog" aria-labelledby="settings-title" aria-hidden="true">
+            <div class="settings-modal-content">
+                <div class="settings-header">
+                    <h2 id="settings-title">Ollama Connection Settings</h2>
+                    <button id="settings-close-btn" class="settings-close-btn" aria-label="Close settings">×</button>
+                </div>
+                
+                <div class="settings-body">
+                    <!-- Connection Mode Toggle -->
+                    <div class="settings-section">
+                        <label class="settings-label">Connection Mode</label>
+                        <div class="connection-mode-toggle" role="radiogroup" aria-label="Connection mode">
+                            <label class="radio-option">
+                                <input type="radio" name="connection-mode" value="local" id="mode-local" checked>
+                                <span class="radio-label">Local</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="connection-mode" value="remote" id="mode-remote">
+                                <span class="radio-label">Remote</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Remote Endpoints Section -->
+                    <div class="settings-section" id="remote-endpoints-section">
+                        <div class="section-header">
+                            <label class="settings-label">Remote Endpoints</label>
+                            <button id="add-endpoint-btn" class="add-endpoint-btn" aria-label="Add new endpoint">
+                                + Add Endpoint
+                            </button>
+                        </div>
+                        
+                        <div id="endpoints-list" class="endpoints-list" role="list">
+                            <!-- Endpoints will be dynamically added here -->
+                            <div class="empty-endpoints-message">
+                                No remote endpoints configured. Click "Add Endpoint" to get started.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add/Edit Endpoint Dialog -->
+        <div id="endpoint-dialog" class="endpoint-dialog" role="dialog" aria-labelledby="endpoint-dialog-title" aria-hidden="true">
+            <div class="endpoint-dialog-content">
+                <div class="endpoint-dialog-header">
+                    <h3 id="endpoint-dialog-title">Add Remote Endpoint</h3>
+                    <button id="endpoint-dialog-close-btn" class="endpoint-dialog-close-btn" aria-label="Close dialog">×</button>
+                </div>
+                
+                <form id="endpoint-form" class="endpoint-form">
+                    <div class="form-group">
+                        <label for="endpoint-name">Name</label>
+                        <input type="text" id="endpoint-name" name="name" placeholder="Production Server" required>
+                        <span class="form-error" id="name-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endpoint-host">Host</label>
+                        <input type="text" id="endpoint-host" name="host" placeholder="192.168.1.100" required>
+                        <span class="form-error" id="host-error"></span>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endpoint-port">Port</label>
+                        <input type="number" id="endpoint-port" name="port" placeholder="11434" min="1" max="65535" required>
+                        <span class="form-error" id="port-error"></span>
+                    </div>
+                    
+                    <div class="form-group checkbox-group">
+                        <label>
+                            <input type="checkbox" id="endpoint-https" name="use_https">
+                            <span>Use HTTPS</span>
+                        </label>
+                        <div id="http-warning" class="http-warning" style="display: none;">
+                            ⚠️ Warning: Using HTTP for remote endpoints transmits data unencrypted. Use HTTPS for secure communication.
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endpoint-api-key">API Key (optional)</label>
+                        <input type="password" id="endpoint-api-key" name="api_key" placeholder="Enter API key">
+                        <span class="form-error" id="api-key-error"></span>
+                    </div>
+                    
+                    <div class="endpoint-dialog-actions">
+                        <button type="button" id="test-endpoint-btn" class="btn-secondary">Test Connection</button>
+                        <button type="button" id="cancel-endpoint-btn" class="btn-secondary">Cancel</button>
+                        <button type="submit" id="save-endpoint-btn" class="btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script type="module" src="app.js"></script>
