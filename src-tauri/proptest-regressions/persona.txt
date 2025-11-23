@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9e1f869b88f0c2656b6d0bc61c6af787866e2ef45466bdef70804438b4252afc # shrinks to personas = [Persona { id: "-", name: " ", icon: "¡", system_prompt: "\0A \u{b} A ¡A¡", description: None }, Persona { id: "-", name: " ", icon: " ", system_prompt: " a  ¡AA\u{e000}¡A", description: None }]

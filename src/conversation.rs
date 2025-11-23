@@ -1,9 +1,25 @@
-use crate::app::ChatMessage;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+    pub timestamp: String,
+}
+
+impl ChatMessage {
+    pub fn new(role: String, content: String) -> Self {
+        Self {
+            role,
+            content,
+            timestamp: chrono::Local::now().to_rfc3339(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conversation {

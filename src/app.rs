@@ -1,3 +1,4 @@
+use crate::backend::BackendClient;
 use crate::config::{AppConfig, ColorTheme};
 use crate::conversation::{Conversation, ConversationManager, ConversationMetadata};
 use crate::icons;
@@ -15,7 +16,6 @@ use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::time::Duration;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::Lazy;
 
@@ -40,17 +40,7 @@ impl ChatMessage {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaModel {
-    pub name: String,
-    pub modified_at: String,
-    pub size: u64,
-}
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OllamaModelsResponse {
-    pub models: Vec<OllamaModel>,
-}
 
 #[derive(Debug, Clone)]
 pub enum Message {
@@ -245,80 +235,12 @@ impl ChatApp {
     fn fetch_models(ollama_url: String) -> Command<Message> {
         Command::perform(
             async move {
-                let client = reqwest::Client::builder()
-                    .timeout(Duration::from_secs(10))
-                    .build()
-                    .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
-
-                // Use /api/tags endpoint (standard Ollama)
-                let url = format!("{}/api/tags", ollama_url.trim_end_matches('/'));
+                let client = BackendClient::new(ollama_url, 10)
+                    .map_err(|e| format!("Failed to create backend client: {}", e))?;
                 
-                let response = client
-                    .get(&url)
-                    .send()
+                client.fetch_models()
                     .await
-                    .map_err(|e| {
-                        format!("Failed to fetch models from {}: {}", url, e)
-                    })?;
-
-                if !response.status().is_success() {
-                    return Err(format!(
-                        "API error: {} - {}",
-                        response.status(),
-                        response.text().await.unwrap_or_default()
-                    ));
-                }
-
-                // Get response text for debugging
-                let response_text = response.text().await
-                    .map_err(|e| format!("Failed to read response: {}", e))?;
-
-                // Try to parse as JSON
-                let json: serde_json::Value = serde_json::from_str(&response_text)
-                    .map_err(|e| format!("Failed to parse JSON: {}. Response: {}", e, response_text))?;
-
-                // Try multiple parsing strategies
-                let model_names: Vec<String> = if let Some(models_array) = json.as_array() {
-                    // Direct array of strings: ["model1", "model2"]
-                    models_array
-                        .iter()
-                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                        .collect()
-                } else if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
-                    // OpenAI-style: {"data": [{"id": "model1"}, ...]}
-                    data.iter()
-                        .filter_map(|v| {
-                            v.get("id")
-                                .and_then(|id| id.as_str())
-                                .map(|s| s.to_string())
-                        })
-                        .collect()
-                } else if let Some(models) = json.get("models").and_then(|v| v.as_array()) {
-                    // Ollama-style: {"models": [{"name": "model1"}, ...]}
-                    models
-                        .iter()
-                        .filter_map(|v| {
-                            if let Some(name) = v.get("name").and_then(|n| n.as_str()) {
-                                Some(name.to_string())
-                            } else if let Some(id) = v.get("id").and_then(|n| n.as_str()) {
-                                Some(id.to_string())
-                            } else if let Some(s) = v.as_str() {
-                                Some(s.to_string())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect()
-                } else {
-                    // Unknown format
-                    return Err(format!("Unexpected response format: {}", response_text));
-                };
-
-                if model_names.is_empty() {
-                    Err(format!("No models found in response: {}", response_text))
-                } else {
-                    Ok(model_names)
-                }
+                    .map_err(|e| format!("Failed to fetch models: {}", e))
             },
             |result: Result<Vec<String>, String>| Message::ModelsReceived(result),
         )
@@ -335,83 +257,35 @@ impl ChatApp {
         
         // Spawn async task that updates the buffer
         tokio::spawn(async move {
-            use futures::StreamExt;
-            
-            let client = match reqwest::Client::builder()
-                .timeout(Duration::from_secs(timeout))
-                .build()
-            {
+            let client = match BackendClient::new(backend_url, timeout) {
                 Ok(c) => c,
                 Err(e) => {
-                    error!("Failed to create HTTP client: {}", e);
+                    error!("Failed to create backend client: {}", e);
                     return;
                 }
             };
 
-            let full_url = format!("{}/api/generate", backend_url.trim_end_matches('/'));
+            let result = client.send_prompt_streaming(
+                &prompt,
+                &model,
+                |chunk| {
+                    // Update the global buffer
+                    if let Ok(mut stream_buf) = STREAM_BUFFER.lock() {
+                        stream_buf.push_str(&chunk);
+                    }
+                    Ok(())
+                }
+            ).await;
 
-            let request_body = serde_json::json!({
-                "model": model,
-                "prompt": prompt,
-                "stream": true
-            });
-
-            let response = match client
-                .post(&full_url)
-                .json(&request_body)
-                .send()
-                .await
-            {
-                Ok(r) => r,
+            match result {
+                Ok(_) => {
+                    // Mark as complete
+                    if let Ok(mut complete) = STREAM_COMPLETE.lock() {
+                        *complete = true;
+                    }
+                }
                 Err(e) => {
-                    error!("Network error: {}", e);
-                    return;
-                }
-            };
-
-            if !response.status().is_success() {
-                error!("Server error: {}", response.status());
-                return;
-            }
-
-            let mut stream = response.bytes_stream();
-            let mut buffer = String::new();
-            
-            while let Some(chunk) = stream.next().await {
-                match chunk {
-                    Ok(bytes) => {
-                        if let Ok(text) = std::str::from_utf8(&bytes) {
-                            buffer.push_str(text);
-                            
-                            while let Some(newline_pos) = buffer.find('\n') {
-                                let line = buffer[..newline_pos].trim().to_string();
-                                buffer = buffer[newline_pos + 1..].to_string();
-                                
-                                if !line.is_empty() {
-                                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                                        if let Some(response_text) = json.get("response").and_then(|v| v.as_str()) {
-                                            // Update the global buffer
-                                            if let Ok(mut stream_buf) = STREAM_BUFFER.lock() {
-                                                stream_buf.push_str(response_text);
-                                            }
-                                        }
-                                        
-                                        // Check if done
-                                        if json.get("done").and_then(|v| v.as_bool()).unwrap_or(false) {
-                                            if let Ok(mut complete) = STREAM_COMPLETE.lock() {
-                                                *complete = true;
-                                            }
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!("Stream error: {}", e);
-                        return;
-                    }
+                    error!("Streaming error: {}", e);
                 }
             }
         });

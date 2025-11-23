@@ -87,13 +87,11 @@ fn test_backend_settings_new_fields() {
         remote_endpoints: Vec::new(),
         connection_mode: ConnectionMode::Local,
         active_remote_endpoint_id: None,
-        enable_encryption: false,
     };
     
     assert_eq!(settings.connection_mode, ConnectionMode::Local);
     assert_eq!(settings.remote_endpoints.len(), 0);
     assert_eq!(settings.active_remote_endpoint_id, None);
-    assert_eq!(settings.enable_encryption, false);
 }
 
 #[test]
@@ -114,12 +112,10 @@ fn test_backend_settings_with_remote_endpoint() {
         remote_endpoints: vec![endpoint.clone()],
         connection_mode: ConnectionMode::Remote,
         active_remote_endpoint_id: Some(endpoint.id.clone()),
-        enable_encryption: true,
     };
     
     assert_eq!(settings.connection_mode, ConnectionMode::Remote);
     assert_eq!(settings.remote_endpoints.len(), 1);
     assert_eq!(settings.remote_endpoints[0].name, "Remote Server");
     assert_eq!(settings.active_remote_endpoint_id, Some(endpoint.id));
-    assert_eq!(settings.enable_encryption, true);
 }

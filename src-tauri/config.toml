@@ -1,0 +1,17 @@
+[app]
+window_title = "Prometheus"
+window_width = 800.0
+window_height = 600.0
+
+[backend]
+url = "http://localhost:1234"
+ollama_url = "http://localhost:1234"
+timeout_seconds = 30
+saved_urls = []
+remote_endpoints = []
+connection_mode = "Local"
+
+[ui]
+font_size = 16
+max_chat_history = 1000
+theme = "Hacker Green"

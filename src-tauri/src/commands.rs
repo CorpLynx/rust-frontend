@@ -3,6 +3,9 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 use futures_util::StreamExt;
 use crate::persona::{Persona, PersonaManager};
+use crate::config::{AppConfig, RemoteEndpoint};
+use crate::network::{ConnectionManager, ConnectionTestResult};
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -12,9 +15,12 @@ pub struct ChatMessage {
 }
 
 #[tauri::command]
-pub async fn get_models() -> Result<Vec<String>, String> {
-    // Default Ollama URL
-    let ollama_url = "http://localhost:11434";
+pub async fn get_models(
+    connection_manager: State<'_, Arc<ConnectionManager>>,
+) -> Result<Vec<String>, String> {
+    // Get the active endpoint URL based on connection mode
+    // Requirements: 3.1, 3.2
+    let ollama_url = connection_manager.get_active_endpoint()?;
     
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
@@ -63,8 +69,11 @@ pub async fn send_message_stream(
     model: String,
     request_id: String,
     system_prompt: Option<String>,
+    connection_manager: State<'_, Arc<ConnectionManager>>,
 ) -> Result<(), String> {
-    let ollama_url = "http://localhost:11434";
+    // Get the active endpoint URL based on connection mode
+    // Requirements: 3.1, 3.2
+    let ollama_url = connection_manager.get_active_endpoint()?;
     
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -200,4 +209,169 @@ pub fn set_active_persona(
 #[tauri::command]
 pub fn get_active_persona(persona_manager: State<PersonaManager>) -> Result<Option<Persona>, String> {
     Ok(persona_manager.get_active_persona())
+}
+
+// Endpoint management commands
+
+/// Add a new remote endpoint
+/// Requirements: 1.2, 1.3
+#[tauri::command]
+pub fn add_remote_endpoint(
+    config: State<Arc<RwLock<AppConfig>>>,
+    name: String,
+    host: String,
+    port: u16,
+    use_https: bool,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    // Create the endpoint with validation
+    let endpoint = RemoteEndpoint::new(name, host, port, use_https, api_key)
+        .map_err(|e| format!("Validation failed: {:?}", e))?;
+    
+    // Add to config
+    let mut config = config.write()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    let endpoint_id = config.backend.add_remote_endpoint(endpoint)
+        .map_err(|e| format!("Failed to add endpoint: {:?}", e))?;
+    
+    // Save configuration
+    config.save()
+        .map_err(|e| format!("Failed to save config: {}", e))?;
+    
+    Ok(endpoint_id)
+}
+
+/// Remove a remote endpoint by ID
+/// Requirements: 5.3
+#[tauri::command]
+pub fn remove_remote_endpoint(
+    config: State<Arc<RwLock<AppConfig>>>,
+    endpoint_id: String,
+) -> Result<(), String> {
+    let mut config = config.write()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    config.backend.remove_remote_endpoint(&endpoint_id)?;
+    
+    // Save configuration
+    config.save()
+        .map_err(|e| format!("Failed to save config: {}", e))?;
+    
+    Ok(())
+}
+
+/// Update an existing remote endpoint
+/// Requirements: 5.4
+#[tauri::command]
+pub fn update_remote_endpoint(
+    config: State<Arc<RwLock<AppConfig>>>,
+    endpoint_id: String,
+    name: String,
+    host: String,
+    port: u16,
+    use_https: bool,
+    api_key: Option<String>,
+) -> Result<(), String> {
+    // Create the updated endpoint with validation
+    let mut updated_endpoint = RemoteEndpoint::new(name, host, port, use_https, api_key)
+        .map_err(|e| format!("Validation failed: {:?}", e))?;
+    
+    // Set the ID to match the existing endpoint
+    updated_endpoint.id = endpoint_id.clone();
+    
+    // Update in config
+    let mut config = config.write()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    config.backend.update_remote_endpoint(&endpoint_id, updated_endpoint)?;
+    
+    // Save configuration
+    config.save()
+        .map_err(|e| format!("Failed to save config: {}", e))?;
+    
+    Ok(())
+}
+
+/// List all remote endpoints
+/// Requirements: 5.1
+#[tauri::command]
+pub fn list_remote_endpoints(
+    config: State<Arc<RwLock<AppConfig>>>,
+) -> Result<Vec<RemoteEndpoint>, String> {
+    let config = config.read()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    Ok(config.backend.list_remote_endpoints().to_vec())
+}
+
+/// Test connection to a remote endpoint
+/// Requirements: 4.1, 4.2
+#[tauri::command]
+pub async fn test_remote_endpoint(
+    connection_manager: State<'_, Arc<ConnectionManager>>,
+    endpoint_id: String,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
+) -> Result<ConnectionTestResult, String> {
+    // Get the endpoint URL
+    let endpoint_url = {
+        let config = config.read()
+            .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+        
+        let endpoint = config.backend.get_remote_endpoint(&endpoint_id)
+            .ok_or_else(|| format!("Endpoint with ID {} not found", endpoint_id))?;
+        
+        endpoint.url()
+    };
+    
+    // Test the connection
+    connection_manager.test_connection(&endpoint_url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// Connection mode management commands
+
+/// Set the connection mode (Local or Remote)
+/// Requirements: 2.1, 2.4, 2.5
+#[tauri::command]
+pub async fn set_connection_mode(
+    connection_manager: State<'_, Arc<ConnectionManager>>,
+    mode: crate::config::ConnectionMode,
+) -> Result<(), String> {
+    connection_manager.switch_mode(mode).await
+}
+
+/// Get the current connection mode
+/// Requirements: 2.1
+#[tauri::command]
+pub fn get_connection_mode(
+    config: State<Arc<RwLock<AppConfig>>>,
+) -> Result<crate::config::ConnectionMode, String> {
+    let config = config.read()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    Ok(config.backend.get_connection_mode().clone())
+}
+
+/// Set the active remote endpoint
+/// Requirements: 2.3, 5.2
+#[tauri::command]
+pub async fn set_active_remote_endpoint(
+    connection_manager: State<'_, Arc<ConnectionManager>>,
+    endpoint_id: String,
+) -> Result<(), String> {
+    connection_manager.set_active_remote_endpoint(&endpoint_id).await
+}
+
+/// Get the currently active endpoint (returns the URL)
+/// Requirements: 2.2, 2.3
+#[tauri::command]
+pub fn get_active_endpoint(
+    config: State<Arc<RwLock<AppConfig>>>,
+) -> Result<String, String> {
+    let config = config.read()
+        .map_err(|e| format!("Failed to acquire config lock: {}", e))?;
+    
+    config.backend.get_active_endpoint_url()
 }

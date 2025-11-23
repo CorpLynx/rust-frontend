@@ -3,6 +3,8 @@ use log::error;
 use std::fs;
 
 mod app;
+mod backend;
+mod cli;
 mod config;
 mod conversation;
 mod icons;

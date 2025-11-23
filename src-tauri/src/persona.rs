@@ -339,8 +339,8 @@ mod tests {
     // **Feature: persona-switcher, Property 9: Configuration loading completeness**
     // **Validates: Requirements 4.2**
     // 
-    // For any valid persona configuration file, all valid personas in the file should be loaded
-    // and available for selection.
+    // For any valid persona configuration file, all valid personas with unique IDs in the file 
+    // should be loaded and available for selection.
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(100))]
         
@@ -369,22 +369,23 @@ mod tests {
             
             let loaded = loaded_personas.unwrap();
             
-            // All personas in the input should be valid (by construction)
-            let valid_input_personas: Vec<_> = personas.iter()
-                .filter(|p| p.validate())
+            // Filter to valid personas with unique IDs (matching the loader's behavior)
+            let mut seen_ids = std::collections::HashSet::new();
+            let valid_unique_personas: Vec<_> = personas.iter()
+                .filter(|p| p.validate() && seen_ids.insert(p.id.clone()))
                 .collect();
             
-            // All valid personas should be loaded
+            // All valid personas with unique IDs should be loaded
             prop_assert_eq!(
                 loaded.len(),
-                valid_input_personas.len(),
-                "All valid personas should be loaded. Expected {}, got {}",
-                valid_input_personas.len(),
+                valid_unique_personas.len(),
+                "All valid personas with unique IDs should be loaded. Expected {}, got {}",
+                valid_unique_personas.len(),
                 loaded.len()
             );
             
-            // Each valid persona should be present in the loaded set
-            for input_persona in valid_input_personas {
+            // Each valid unique persona should be present in the loaded set
+            for input_persona in valid_unique_personas {
                 let found = loaded.iter().any(|p| {
                     p.id == input_persona.id
                         && p.name == input_persona.name
