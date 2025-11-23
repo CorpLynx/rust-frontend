@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crate::cli::terminal::Terminal;
+use crate::terminal::Terminal;
 
 /// Handler for streaming AI responses with real-time display
 pub struct StreamingHandler {
@@ -326,11 +326,10 @@ mod tests {
                     return false;
                 }
                 
-                // The terminal output should contain all the chunks (without the final newline)
+                // The terminal output should be the chunks plus the final newline from finalize
                 let output = handler.get_output();
-                // Remove the final newline added by finalize
-                let output_without_newline = output.trim_end_matches('\n');
-                output_without_newline == expected
+                // The output should be exactly: expected + "\n" (the newline added by finalize)
+                output == format!("{}\n", expected)
             }
             Err(_) => false,
         }

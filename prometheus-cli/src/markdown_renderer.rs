@@ -353,7 +353,7 @@ mod tests {
 #[cfg(test)]
 mod property_tests {
     use super::*;
-    use quickcheck::{Arbitrary, Gen, QuickCheck, TestResult};
+    use quickcheck::{Arbitrary, Gen, TestResult};
     use quickcheck_macros::quickcheck;
 
     // Custom generator for markdown code blocks

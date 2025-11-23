@@ -125,6 +125,22 @@ impl Terminal {
         Ok(())
     }
 
+    /// Write text in green color
+    ///
+    /// # Arguments
+    /// * `text` - The text to write in green
+    pub fn write_green(&mut self, text: &str) -> Result<()> {
+        execute!(
+            self.stdout,
+            SetForegroundColor(Color::Green),
+            Print(text),
+            ResetColor
+        )
+        .context("Failed to write green text")?;
+        self.stdout.flush().context("Failed to flush stdout")?;
+        Ok(())
+    }
+
     /// Clear the terminal screen
     pub fn clear_screen(&mut self) -> Result<()> {
         execute!(

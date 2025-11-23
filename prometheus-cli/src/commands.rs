@@ -13,6 +13,10 @@ pub enum Command {
     Help,
     /// List available models
     Models,
+    /// Update the CLI to the latest version
+    Update,
+    /// Check for available updates
+    UpdateCheck,
     /// Unknown command
     Unknown(String),
 }
@@ -30,7 +34,7 @@ impl Command {
     ///
     /// # Examples
     /// ```
-    /// use prometheus::cli::commands::Command;
+    /// use prometheus_cli::commands::Command;
     ///
     /// assert_eq!(Command::parse("/exit"), Command::Exit);
     /// assert_eq!(Command::parse("/QUIT"), Command::Quit);
@@ -46,6 +50,19 @@ impl Command {
         } else {
             input
         };
+
+        // Handle update with optional --check flag
+        if command.to_lowercase().starts_with("update") {
+            let parts: Vec<&str> = command.split_whitespace().collect();
+            if parts.len() > 1 && parts[1] == "--check" {
+                return Command::UpdateCheck;
+            }
+            if parts.len() == 1 {
+                return Command::Update;
+            }
+            // If there are extra arguments, treat as unknown
+            return Command::Unknown(command.to_string());
+        }
 
         // Convert to lowercase for case-insensitive matching
         match command.to_lowercase().as_str() {
@@ -68,6 +85,8 @@ impl Command {
             Command::New => "Start a new conversation",
             Command::Help => "Display this help message",
             Command::Models => "List available models from the backend",
+            Command::Update => "Update the CLI to the latest version",
+            Command::UpdateCheck => "Check for available updates",
             Command::Unknown(_) => "Unknown command",
         }
     }
@@ -81,6 +100,8 @@ impl Command {
             Command::New => "new".to_string(),
             Command::Help => "help".to_string(),
             Command::Models => "models".to_string(),
+            Command::Update => "update".to_string(),
+            Command::UpdateCheck => "update --check".to_string(),
             Command::Unknown(cmd) => cmd.clone(),
         }
     }
@@ -97,10 +118,12 @@ pub fn display_help() -> String {
         Command::New,
         Command::Help,
         Command::Models,
+        Command::Update,
+        Command::UpdateCheck,
     ];
 
     for cmd in commands {
-        help.push_str(&format!("  /{:<10} - {}\n", cmd.name(), cmd.description()));
+        help.push_str(&format!("  /{:<15} - {}\n", cmd.name(), cmd.description()));
     }
 
     help
@@ -248,5 +271,50 @@ mod tests {
             Command::Unknown("test1".to_string()),
             Command::Unknown("test2".to_string())
         );
+    }
+
+    #[test]
+    fn test_parse_update_command() {
+        assert_eq!(Command::parse("/update"), Command::Update);
+        assert_eq!(Command::parse("update"), Command::Update);
+    }
+
+    #[test]
+    fn test_parse_update_check_command() {
+        assert_eq!(Command::parse("/update --check"), Command::UpdateCheck);
+        assert_eq!(Command::parse("update --check"), Command::UpdateCheck);
+    }
+
+    #[test]
+    fn test_parse_update_case_insensitive() {
+        assert_eq!(Command::parse("/UPDATE"), Command::Update);
+        assert_eq!(Command::parse("/Update"), Command::Update);
+        assert_eq!(Command::parse("/UPDATE --check"), Command::UpdateCheck);
+        assert_eq!(Command::parse("/Update --check"), Command::UpdateCheck);
+    }
+
+    #[test]
+    fn test_parse_update_with_whitespace() {
+        assert_eq!(Command::parse("  /update  "), Command::Update);
+        assert_eq!(Command::parse("  /update --check  "), Command::UpdateCheck);
+    }
+
+    #[test]
+    fn test_update_command_description() {
+        assert_eq!(Command::Update.description(), "Update the CLI to the latest version");
+        assert_eq!(Command::UpdateCheck.description(), "Check for available updates");
+    }
+
+    #[test]
+    fn test_update_command_name() {
+        assert_eq!(Command::Update.name(), "update");
+        assert_eq!(Command::UpdateCheck.name(), "update --check");
+    }
+
+    #[test]
+    fn test_display_help_includes_update() {
+        let help = display_help();
+        assert!(help.contains("/update"));
+        assert!(help.contains("/update --check"));
     }
 }

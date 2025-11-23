@@ -1,0 +1,38 @@
+[package]
+name = "prometheus-cli"
+version = "0.2.0"
+edition = "2021"
+authors = ["Prometheus Contributors"]
+description = "Terminal-based AI chat interface for Prometheus"
+license = "MIT"
+
+[[bin]]
+name = "prometheus-cli"
+path = "src/main.rs"
+
+[dependencies]
+# CLI-specific dependencies
+crossterm = { workspace = true }
+clap = { workspace = true }
+termimad = { workspace = true }
+
+# Common dependencies
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+config = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+env_logger = { workspace = true }
+uuid = { workspace = true }
+regex = { workspace = true }
+log = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+toml = { workspace = true }
+
+[dev-dependencies]
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+mockito = { workspace = true }

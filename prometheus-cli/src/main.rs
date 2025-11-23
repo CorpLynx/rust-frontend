@@ -1,7 +1,18 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use prometheus::cli::app::CliApp;
-use prometheus::config::AppConfig;
+
+mod app;
+mod backend;
+mod commands;
+mod config;
+mod conversation;
+mod error;
+mod markdown_renderer;
+mod streaming;
+mod terminal;
+
+use app::CliApp;
+use config::AppConfig;
 
 /// Prometheus CLI - Terminal-based AI chat interface
 #[derive(Parser, Debug)]
@@ -40,7 +51,9 @@ async fn main() -> Result<()> {
     };
 
     // Create and run CLI app with CLI argument overrides
-    let mut app = CliApp::new(config, args.url, args.model)
+    // If no model is specified, prompt for interactive selection
+    let mut app = CliApp::new_with_model_selection(config, args.url, args.model)
+        .await
         .context("Failed to initialize CLI application")?;
 
     app.run().await
