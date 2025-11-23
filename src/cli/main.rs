@@ -8,11 +8,11 @@ use prometheus::config::AppConfig;
 #[command(name = "prometheus-cli")]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// Ollama backend URL
+    /// Ollama backend URL (overrides config file)
     #[arg(short, long, value_name = "URL")]
     url: Option<String>,
 
-    /// Model name to use for chat
+    /// Model name to use for chat (overrides config file)
     #[arg(short, long, value_name = "MODEL")]
     model: Option<String>,
 
@@ -29,17 +29,17 @@ async fn main() -> Result<()> {
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
 
-    // Load configuration
+    // Load configuration with fallback to defaults
     let config = match AppConfig::load() {
         Ok(cfg) => cfg,
         Err(e) => {
-            eprintln!("Warning: Failed to load config: {}", e);
+            eprintln!("Warning: Failed to load config from {}: {}", args.config, e);
             eprintln!("Using default configuration");
             AppConfig::default()
         }
     };
 
-    // Create and run CLI app
+    // Create and run CLI app with CLI argument overrides
     let mut app = CliApp::new(config, args.url, args.model)
         .context("Failed to initialize CLI application")?;
 

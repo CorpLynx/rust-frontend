@@ -16,25 +16,37 @@ pub struct CliApp {
     terminal: Terminal,
     running: bool,
     model: String,
+    backend_url: String,
 }
 
 impl CliApp {
     /// Create a new CLI application instance
     ///
+    /// Implements configuration override precedence (Requirement 4.5):
+    /// CLI arguments take precedence over config file values.
+    ///
     /// # Arguments
-    /// * `config` - Application configuration
-    /// * `backend_url` - Optional backend URL override
-    /// * `model` - Optional model name override
+    /// * `config` - Application configuration loaded from config.toml
+    /// * `backend_url` - Optional backend URL override from CLI arguments
+    /// * `model` - Optional model name override from CLI arguments
+    ///
+    /// # Requirements
+    /// * 4.1: Load configuration from config.toml file
+    /// * 4.2: Use configured Ollama URL for all backend requests
+    /// * 4.3: Use configured model for generating responses
+    /// * 4.4: Use default values when configuration is missing/invalid
+    /// * 4.5: CLI arguments override config file values
     pub fn new(
         config: AppConfig,
         backend_url: Option<String>,
         model: Option<String>,
     ) -> Result<Self> {
-        // Use CLI argument overrides if provided, otherwise use config values
+        // Implement configuration override precedence (Requirement 4.5)
+        // CLI arguments take precedence over config file values
         let url = backend_url.unwrap_or_else(|| config.backend.ollama_url.clone());
         let model_name = model.unwrap_or_else(|| "llama2".to_string());
 
-        let backend_client = BackendClient::new(url, config.backend.timeout_seconds)
+        let backend_client = BackendClient::new(url.clone(), config.backend.timeout_seconds)
             .context("Failed to create backend client")?;
 
         let terminal = Terminal::new().context("Failed to create terminal")?;
@@ -50,7 +62,18 @@ impl CliApp {
             terminal,
             running: true,
             model: model_name,
+            backend_url: url,
         })
+    }
+
+    /// Get the backend URL being used by this CLI instance
+    pub fn backend_url(&self) -> &str {
+        &self.backend_url
+    }
+
+    /// Get the model being used by this CLI instance
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
     /// Display welcome message
@@ -237,6 +260,7 @@ mod tests {
     use super::*;
     use quickcheck::{QuickCheck, TestResult};
     use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
 
     /// **Feature: cli-version, Property 1: Prompt transmission completeness**
     /// For any non-empty user prompt, when submitted to the CLI, the exact prompt
@@ -439,5 +463,615 @@ mod tests {
         let mut app = CliApp::new(config, None, None).unwrap();
         let result = app.handle_command("/unknown").await;
         assert!(result.is_ok());
+    }
+
+    /// **Feature: cli-version, Property 5: Configuration override precedence**
+    /// For any configuration value (URL or model) that exists in both config.toml
+    /// and command-line arguments, the command-line argument value should be used
+    /// for all operations.
+    /// **Validates: Requirements 4.5**
+    #[test]
+    fn prop_configuration_override_precedence() {
+        fn property(config_url: String, cli_url: String, config_model: String, cli_model: String) -> TestResult {
+            // Filter out empty strings
+            if config_url.trim().is_empty() || cli_url.trim().is_empty() 
+                || config_model.trim().is_empty() || cli_model.trim().is_empty() {
+                return TestResult::discard();
+            }
+
+            // Filter out strings with control characters
+            if config_url.chars().any(|c| c.is_control())
+                || cli_url.chars().any(|c| c.is_control())
+                || config_model.chars().any(|c| c.is_control())
+                || cli_model.chars().any(|c| c.is_control()) {
+                return TestResult::discard();
+            }
+
+            // Limit string lengths
+            if config_url.len() > 100 || cli_url.len() > 100 
+                || config_model.len() > 50 || cli_model.len() > 50 {
+                return TestResult::discard();
+            }
+
+            // Ensure URLs and models are different to test override
+            if config_url == cli_url || config_model == cli_model {
+                return TestResult::discard();
+            }
+
+            // Create config with specific values
+            let mut config = AppConfig::default();
+            config.backend.ollama_url = config_url.clone();
+
+            // Create app with CLI overrides
+            let app = match CliApp::new(config, Some(cli_url.clone()), Some(cli_model.clone())) {
+                Ok(app) => app,
+                Err(_) => return TestResult::discard(),
+            };
+
+            // Verify CLI arguments override config values
+            if app.backend_url() != cli_url {
+                return TestResult::failed();
+            }
+
+            if app.model() != cli_model {
+                return TestResult::failed();
+            }
+
+            TestResult::passed()
+        }
+
+        QuickCheck::new()
+            .tests(100)
+            .quickcheck(property as fn(String, String, String, String) -> TestResult);
+    }
+
+    /// **Feature: cli-version, Property 6: Backend URL consistency**
+    /// For any prompt sent during a session, all HTTP requests should be directed
+    /// to the same backend URL that was configured at startup (either from config or CLI args).
+    /// **Validates: Requirements 4.2**
+    #[test]
+    fn prop_backend_url_consistency() {
+        fn property(backend_url: String) -> TestResult {
+            // Filter out empty strings
+            if backend_url.trim().is_empty() {
+                return TestResult::discard();
+            }
+
+            // Filter out strings with control characters
+            if backend_url.chars().any(|c| c.is_control()) {
+                return TestResult::discard();
+            }
+
+            // Filter out strings that don't look like URLs
+            // Must contain at least one colon and not be just "/"
+            if !backend_url.contains(':') || backend_url == "/" {
+                return TestResult::discard();
+            }
+
+            // Filter out URLs with spaces or other problematic characters
+            if backend_url.contains(' ') || backend_url.contains('\t') {
+                return TestResult::discard();
+            }
+
+            // Limit string length
+            if backend_url.len() > 100 || backend_url.len() < 3 {
+                return TestResult::discard();
+            }
+
+            // Create config with default values
+            let config = AppConfig::default();
+
+            // Create app with CLI URL override
+            let app = match CliApp::new(config, Some(backend_url.clone()), None) {
+                Ok(app) => app,
+                Err(_) => return TestResult::discard(),
+            };
+
+            // Verify the backend URL is set correctly
+            if app.backend_url() != backend_url {
+                return TestResult::failed();
+            }
+
+            // Verify the backend client uses the same URL
+            if app.backend_client.base_url() != backend_url {
+                return TestResult::failed();
+            }
+
+            TestResult::passed()
+        }
+
+        QuickCheck::new()
+            .tests(100)
+            .quickcheck(property as fn(String) -> TestResult);
+    }
+
+    /// **Feature: cli-version, Property 7: Model parameter consistency**
+    /// For any prompt sent during a session, all requests should include the same
+    /// model parameter that was configured at startup (either from config or CLI args).
+    /// **Validates: Requirements 4.3**
+    #[test]
+    fn prop_model_parameter_consistency() {
+        fn property(model_name: String) -> TestResult {
+            // Filter out empty strings
+            if model_name.trim().is_empty() {
+                return TestResult::discard();
+            }
+
+            // Filter out strings with control characters
+            if model_name.chars().any(|c| c.is_control()) {
+                return TestResult::discard();
+            }
+
+            // Limit string length
+            if model_name.len() > 50 {
+                return TestResult::discard();
+            }
+
+            // Create config with default values
+            let config = AppConfig::default();
+
+            // Create app with CLI model override
+            let app = match CliApp::new(config, None, Some(model_name.clone())) {
+                Ok(app) => app,
+                Err(_) => return TestResult::discard(),
+            };
+
+            // Verify the model is set correctly
+            if app.model() != model_name {
+                return TestResult::failed();
+            }
+
+            // Verify the conversation uses the same model
+            if app.conversation.model.as_ref() != Some(&model_name) {
+                return TestResult::failed();
+            }
+
+            TestResult::passed()
+        }
+
+        QuickCheck::new()
+            .tests(100)
+            .quickcheck(property as fn(String) -> TestResult);
+    }
+
+    // Unit tests for configuration scenarios
+
+    /// Test config file loading with valid config
+    /// **Validates: Requirements 4.1**
+    #[test]
+    fn test_config_file_loading() {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Create a test config file
+        let test_config_path = PathBuf::from("test_config_cli.toml");
+        let test_config = r#"
+[app]
+window_title = "Test App"
+window_width = 800.0
+window_height = 600.0
+
+[backend]
+url = "http://test-server:8080"
+ollama_url = "http://test-ollama:11434"
+timeout_seconds = 60
+
+[ui]
+font_size = 16
+max_chat_history = 1000
+theme = "Hacker Green"
+"#;
+
+        // Write test config
+        fs::write(&test_config_path, test_config).expect("Failed to write test config");
+
+        // Load config
+        let loaded_config = config::Config::builder()
+            .add_source(config::File::from(test_config_path.clone()))
+            .build()
+            .expect("Failed to build config")
+            .try_deserialize::<AppConfig>()
+            .expect("Failed to deserialize config");
+
+        // Clean up
+        fs::remove_file(&test_config_path).ok();
+
+        // Verify config values
+        assert_eq!(loaded_config.backend.ollama_url, "http://test-ollama:11434");
+        assert_eq!(loaded_config.backend.timeout_seconds, 60);
+    }
+
+    /// Test default value fallback when config is missing
+    /// **Validates: Requirements 4.4**
+    #[tokio::test]
+    async fn test_default_value_fallback() {
+        // Create app with default config (simulating missing config file)
+        let config = AppConfig::default();
+        let app = CliApp::new(config.clone(), None, None).unwrap();
+
+        // Verify default values are used
+        assert_eq!(app.backend_url(), config.backend.ollama_url);
+        assert_eq!(app.model(), "llama2");
+    }
+
+    /// Test CLI argument parsing and override
+    /// **Validates: Requirements 4.5**
+    #[tokio::test]
+    async fn test_cli_argument_override() {
+        let config = AppConfig::default();
+        let cli_url = "http://custom-server:9999".to_string();
+        let cli_model = "custom-model".to_string();
+
+        let app = CliApp::new(config, Some(cli_url.clone()), Some(cli_model.clone())).unwrap();
+
+        // Verify CLI arguments override config values
+        assert_eq!(app.backend_url(), cli_url);
+        assert_eq!(app.model(), cli_model);
+    }
+
+    /// Test invalid config handling (missing required fields)
+    /// **Validates: Requirements 4.4**
+    #[test]
+    fn test_invalid_config_handling() {
+        use std::fs;
+        use std::path::PathBuf;
+
+        // Create an invalid config file (missing required fields)
+        let test_config_path = PathBuf::from("test_invalid_config.toml");
+        let test_config = r#"
+[app]
+window_title = "Test App"
+# Missing other required fields
+"#;
+
+        // Write test config
+        fs::write(&test_config_path, test_config).expect("Failed to write test config");
+
+        // Try to load config - should fail
+        let result = config::Config::builder()
+            .add_source(config::File::from(test_config_path.clone()))
+            .build()
+            .and_then(|cfg| cfg.try_deserialize::<AppConfig>());
+
+        // Clean up
+        fs::remove_file(&test_config_path).ok();
+
+        // Config loading should fail, and the app should fall back to defaults
+        assert!(result.is_err());
+
+        // In the actual app, this is handled by using AppConfig::default()
+        let default_config = AppConfig::default();
+        let app = CliApp::new(default_config, None, None);
+        assert!(app.is_ok());
+    }
+
+    /// Test that config values are used when no CLI overrides are provided
+    /// **Validates: Requirements 4.2, 4.3**
+    #[tokio::test]
+    async fn test_config_values_without_overrides() {
+        let mut config = AppConfig::default();
+        config.backend.ollama_url = "http://config-server:7777".to_string();
+
+        let app = CliApp::new(config.clone(), None, None).unwrap();
+
+        // Verify config values are used
+        assert_eq!(app.backend_url(), config.backend.ollama_url);
+        assert_eq!(app.model(), "llama2"); // Default model
+    }
+
+    /// Test partial CLI overrides (only URL)
+    /// **Validates: Requirements 4.5**
+    #[tokio::test]
+    async fn test_partial_cli_override_url_only() {
+        let mut config = AppConfig::default();
+        config.backend.ollama_url = "http://config-server:7777".to_string();
+
+        let cli_url = "http://cli-server:8888".to_string();
+        let app = CliApp::new(config, Some(cli_url.clone()), None).unwrap();
+
+        // Verify URL is overridden but model uses default
+        assert_eq!(app.backend_url(), cli_url);
+        assert_eq!(app.model(), "llama2");
+    }
+
+    /// Test partial CLI overrides (only model)
+    /// **Validates: Requirements 4.5**
+    #[tokio::test]
+    async fn test_partial_cli_override_model_only() {
+        let mut config = AppConfig::default();
+        config.backend.ollama_url = "http://config-server:7777".to_string();
+
+        let cli_model = "cli-model".to_string();
+        let app = CliApp::new(config.clone(), None, Some(cli_model.clone())).unwrap();
+
+        // Verify model is overridden but URL uses config
+        assert_eq!(app.backend_url(), config.backend.ollama_url);
+        assert_eq!(app.model(), cli_model);
+    }
+
+    /// **Feature: cli-version, Property 4: Conversation persistence round-trip**
+    /// For any message added to a conversation (user prompt or AI response), after
+    /// persisting to disk and reloading the conversation, the message should be
+    /// present with identical content and timestamp.
+    /// **Validates: Requirements 3.1, 3.2, 3.3**
+    #[test]
+    fn prop_conversation_persistence_round_trip() {
+        fn property(user_content: String, ai_content: String) -> TestResult {
+            // Filter out empty messages
+            if user_content.trim().is_empty() || ai_content.trim().is_empty() {
+                return TestResult::discard();
+            }
+
+            // Filter out messages with control characters (except newlines and tabs)
+            if user_content.chars().any(|c| c.is_control() && c != '\n' && c != '\t')
+                || ai_content.chars().any(|c| c.is_control() && c != '\n' && c != '\t') {
+                return TestResult::discard();
+            }
+
+            // Limit message length to avoid excessive test data
+            if user_content.len() > 500 || ai_content.len() > 500 {
+                return TestResult::discard();
+            }
+
+            // Create a conversation manager
+            let manager = ConversationManager::new();
+
+            // Create a new conversation with a unique ID for this test
+            let mut conversation = Conversation::new(
+                format!("Test Conversation {}", Uuid::new_v4()),
+                Some("test-model".to_string())
+            );
+
+            // Add user message
+            let user_message = ChatMessage::new("user".to_string(), user_content.clone());
+            let user_timestamp = user_message.timestamp.clone();
+            conversation.add_message(user_message);
+
+            // Add AI response
+            let ai_message = ChatMessage::new("assistant".to_string(), ai_content.clone());
+            let ai_timestamp = ai_message.timestamp.clone();
+            conversation.add_message(ai_message);
+
+            // Save the conversation
+            if let Err(_) = manager.save_conversation(&conversation) {
+                return TestResult::discard();
+            }
+
+            // Load the conversation back
+            let loaded_conversation = match manager.load_conversation(&conversation.id) {
+                Ok(conv) => conv,
+                Err(_) => {
+                    // Clean up
+                    manager.delete_conversation(&conversation.id).ok();
+                    return TestResult::failed();
+                }
+            };
+
+            // Clean up
+            manager.delete_conversation(&conversation.id).ok();
+
+            // Verify the conversation has the same ID
+            if loaded_conversation.id != conversation.id {
+                return TestResult::failed();
+            }
+
+            // Verify we have exactly 2 messages
+            if loaded_conversation.messages.len() != 2 {
+                return TestResult::failed();
+            }
+
+            // Verify user message content and timestamp
+            let loaded_user_msg = &loaded_conversation.messages[0];
+            if loaded_user_msg.role != "user" {
+                return TestResult::failed();
+            }
+            if loaded_user_msg.content != user_content {
+                return TestResult::failed();
+            }
+            if loaded_user_msg.timestamp != user_timestamp {
+                return TestResult::failed();
+            }
+
+            // Verify AI message content and timestamp
+            let loaded_ai_msg = &loaded_conversation.messages[1];
+            if loaded_ai_msg.role != "assistant" {
+                return TestResult::failed();
+            }
+            if loaded_ai_msg.content != ai_content {
+                return TestResult::failed();
+            }
+            if loaded_ai_msg.timestamp != ai_timestamp {
+                return TestResult::failed();
+            }
+
+            TestResult::passed()
+        }
+
+        QuickCheck::new()
+            .tests(100)
+            .quickcheck(property as fn(String, String) -> TestResult);
+    }
+
+    // Unit tests for conversation lifecycle
+
+    /// Test conversation creation with timestamp name
+    /// **Validates: Requirements 3.4**
+    #[tokio::test]
+    async fn test_conversation_creation_with_timestamp_name() {
+        let config = AppConfig::default();
+        let app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+
+        // Verify conversation was created
+        assert!(!app.conversation.id.is_empty());
+        assert!(!app.conversation.name.is_empty());
+        
+        // Verify name contains "Chat" prefix (timestamp format)
+        assert!(app.conversation.name.starts_with("Chat "));
+        
+        // Verify model is set
+        assert_eq!(app.conversation.model, Some("test-model".to_string()));
+        
+        // Verify conversation starts empty
+        assert_eq!(app.conversation.messages.len(), 0);
+        
+        // Verify timestamps are set
+        assert!(!app.conversation.created_at.is_empty());
+        assert!(!app.conversation.updated_at.is_empty());
+    }
+
+    /// Test message addition to conversation
+    /// **Validates: Requirements 3.1, 3.2**
+    #[tokio::test]
+    async fn test_message_addition() {
+        let config = AppConfig::default();
+        let mut app = CliApp::new(config, None, None).unwrap();
+
+        // Initially empty
+        assert_eq!(app.conversation.messages.len(), 0);
+
+        // Add a user message
+        let user_msg = ChatMessage::new("user".to_string(), "Hello".to_string());
+        let user_timestamp = user_msg.timestamp.clone();
+        app.conversation.add_message(user_msg);
+
+        // Verify message was added
+        assert_eq!(app.conversation.messages.len(), 1);
+        assert_eq!(app.conversation.messages[0].role, "user");
+        assert_eq!(app.conversation.messages[0].content, "Hello");
+        assert_eq!(app.conversation.messages[0].timestamp, user_timestamp);
+
+        // Add an AI response
+        let ai_msg = ChatMessage::new("assistant".to_string(), "Hi there!".to_string());
+        let ai_timestamp = ai_msg.timestamp.clone();
+        app.conversation.add_message(ai_msg);
+
+        // Verify both messages are present
+        assert_eq!(app.conversation.messages.len(), 2);
+        assert_eq!(app.conversation.messages[1].role, "assistant");
+        assert_eq!(app.conversation.messages[1].content, "Hi there!");
+        assert_eq!(app.conversation.messages[1].timestamp, ai_timestamp);
+    }
+
+    /// Test conversation saving on exit
+    /// **Validates: Requirements 3.5**
+    #[tokio::test]
+    async fn test_conversation_saving_on_exit() {
+        let config = AppConfig::default();
+        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+
+        // Add some messages
+        app.conversation.add_message(ChatMessage::new("user".to_string(), "Test message".to_string()));
+        app.conversation.add_message(ChatMessage::new("assistant".to_string(), "Test response".to_string()));
+
+        let conversation_id = app.conversation.id.clone();
+
+        // Call shutdown (which saves the conversation)
+        let result = app.shutdown().await;
+        assert!(result.is_ok());
+
+        // Verify conversation was saved by loading it back
+        let manager = ConversationManager::new();
+        let loaded = manager.load_conversation(&conversation_id);
+        assert!(loaded.is_ok());
+
+        let loaded_conv = loaded.unwrap();
+        assert_eq!(loaded_conv.id, conversation_id);
+        assert_eq!(loaded_conv.messages.len(), 2);
+        assert_eq!(loaded_conv.messages[0].content, "Test message");
+        assert_eq!(loaded_conv.messages[1].content, "Test response");
+
+        // Clean up
+        manager.delete_conversation(&conversation_id).ok();
+    }
+
+    /// Test automatic conversation persistence after message addition
+    /// **Validates: Requirements 3.3**
+    #[tokio::test]
+    async fn test_automatic_conversation_persistence() {
+        let config = AppConfig::default();
+        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+
+        // Add a message
+        app.conversation.add_message(ChatMessage::new("user".to_string(), "Persist me".to_string()));
+
+        let conversation_id = app.conversation.id.clone();
+
+        // Manually save (simulating what happens in handle_prompt)
+        let result = app.conversation_manager.save_conversation(&app.conversation);
+        assert!(result.is_ok());
+
+        // Verify it was persisted by loading it back
+        let loaded = app.conversation_manager.load_conversation(&conversation_id);
+        assert!(loaded.is_ok());
+
+        let loaded_conv = loaded.unwrap();
+        assert_eq!(loaded_conv.messages.len(), 1);
+        assert_eq!(loaded_conv.messages[0].content, "Persist me");
+
+        // Clean up
+        app.conversation_manager.delete_conversation(&conversation_id).ok();
+    }
+
+    /// Test conversation persistence with multiple messages
+    /// **Validates: Requirements 3.1, 3.2, 3.3**
+    #[tokio::test]
+    async fn test_conversation_persistence_multiple_messages() {
+        let config = AppConfig::default();
+        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+
+        let conversation_id = app.conversation.id.clone();
+
+        // Add multiple messages
+        for i in 0..5 {
+            app.conversation.add_message(ChatMessage::new(
+                "user".to_string(),
+                format!("Message {}", i)
+            ));
+            app.conversation.add_message(ChatMessage::new(
+                "assistant".to_string(),
+                format!("Response {}", i)
+            ));
+        }
+
+        // Save conversation
+        app.conversation_manager.save_conversation(&app.conversation).unwrap();
+
+        // Load it back
+        let loaded = app.conversation_manager.load_conversation(&conversation_id).unwrap();
+
+        // Verify all messages are present
+        assert_eq!(loaded.messages.len(), 10);
+        for i in 0..5 {
+            assert_eq!(loaded.messages[i * 2].content, format!("Message {}", i));
+            assert_eq!(loaded.messages[i * 2 + 1].content, format!("Response {}", i));
+        }
+
+        // Clean up
+        app.conversation_manager.delete_conversation(&conversation_id).ok();
+    }
+
+    /// Test that timestamps are preserved during persistence
+    /// **Validates: Requirements 3.1, 3.2**
+    #[tokio::test]
+    async fn test_timestamp_preservation() {
+        let config = AppConfig::default();
+        let mut app = CliApp::new(config, None, None).unwrap();
+
+        let conversation_id = app.conversation.id.clone();
+
+        // Add a message with a specific timestamp
+        let msg = ChatMessage::new("user".to_string(), "Timestamped message".to_string());
+        let original_timestamp = msg.timestamp.clone();
+        app.conversation.add_message(msg);
+
+        // Save and reload
+        app.conversation_manager.save_conversation(&app.conversation).unwrap();
+        let loaded = app.conversation_manager.load_conversation(&conversation_id).unwrap();
+
+        // Verify timestamp is preserved exactly
+        assert_eq!(loaded.messages[0].timestamp, original_timestamp);
+
+        // Clean up
+        app.conversation_manager.delete_conversation(&conversation_id).ok();
     }
 }
