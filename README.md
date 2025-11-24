@@ -1,15 +1,58 @@
 # Prometheus
 
-A modern AI chat application with multiple interfaces: a terminal-based CLI and a cross-platform Tauri desktop application.
+A modern AI chat application with multiple interfaces: a terminal-based CLI and a cross-platform desktop application.
 
 ## Overview
 
 Prometheus provides flexible ways to interact with AI models through Ollama:
 
-- **Prometheus CLI** - A streamlined terminal REPL interface with real-time streaming, markdown rendering, and minimal dependencies. Perfect for server environments and SSH sessions.
-- **Prometheus Tauri** - A modern desktop application with a web-based UI, providing a rich graphical interface with conversation management and advanced features.
+- **Prometheus CLI** - A streamlined terminal interface with real-time streaming, markdown rendering, and non-interactive mode for scripting
+- **Prometheus Desktop** - A modern desktop application with a web-based UI, conversation management, and advanced features
 
 Both interfaces share the same configuration format and conversation storage, allowing seamless switching between terminal and desktop environments.
+
+## Quick Start
+
+### Installation
+
+**macOS:**
+```bash
+curl -sSL https://raw.githubusercontent.com/your-username/prometheus/main/install.sh | bash
+```
+
+**Linux:**
+```bash
+curl -sSL https://raw.githubusercontent.com/your-username/prometheus/main/install-linux.sh | bash
+```
+
+**Manual installation:**
+
+```bash
+# Clone and build
+git clone <repository-url>
+cd prometheus
+cargo build --release -p prometheus-cli
+
+# Install binary
+sudo cp target/release/prometheus-cli /usr/local/bin/
+```
+
+### First Run
+
+1. **Start Ollama:**
+   ```bash
+   ollama serve
+   ```
+
+2. **Launch Prometheus CLI:**
+   ```bash
+   prometheus-cli
+   ```
+
+3. **Start chatting:**
+   ```
+   > What is Rust?
+   ```
 
 ## Features
 
@@ -17,129 +60,130 @@ Both interfaces share the same configuration format and conversation storage, al
 
 - 🚀 **Fast startup** - Launches in under 500ms
 - 💬 **Real-time streaming** - See AI responses as they're generated
-- 📝 **Markdown rendering** - Syntax-highlighted code blocks, formatted lists, and styled text
+- 📝 **Markdown rendering** - Syntax-highlighted code blocks and formatted text
 - 💾 **Auto-save conversations** - All chats automatically saved with timestamps
+- 🤖 **Non-interactive mode** - Perfect for scripts, automation, and command-line workflows
 - ⚙️ **Flexible configuration** - Config file + CLI argument overrides
-- 🎯 **Minimal dependencies** - Single binary, no external runtime required
 - ⌨️ **Interrupt handling** - Graceful Ctrl+C support during generation
-- 🔧 **Multiple commands** - Built-in commands for common operations
+- 🔧 **Built-in commands** - Model switching, conversation management, updates
 
-### Tauri Desktop Application
+### Desktop Application
 
-- 🖥️ **Modern UI** - Web-based interface with rich styling and animations
+- 🖥️ **Modern UI** - Web-based interface with rich styling
 - 📚 **Conversation management** - Browse, search, and organize chat history
 - 🎨 **Persona system** - Switch between different AI personas and behaviors
 - 🔌 **Connection modes** - Support for local and remote Ollama instances
 - ⚙️ **Settings UI** - Graphical configuration without editing files
 - 🌐 **Cross-platform** - Runs on Windows, macOS, and Linux
-- 🔍 **Search functionality** - Full-text search across conversations
-
-## Installation
-
-### Prerequisites
-
-- Rust 1.70 or later
-- Ollama running locally or accessible via network
-- Node.js and npm (for Tauri UI development)
-
-### Building from Source
-
-#### CLI Application
-
-```bash
-# Clone the repository
-git clone <repository-url>
-cd prometheus
-
-# Build the CLI binary
-cargo build --release -p prometheus-cli
-
-# The binary will be at target/release/prometheus-cli
-# Optionally, copy it to your PATH
-sudo cp target/release/prometheus-cli /usr/local/bin/
-```
-
-#### Tauri Desktop Application
-
-```bash
-# Navigate to the Tauri directory
-cd src-tauri
-
-# Build the Tauri application
-cargo build --release
-
-# Or use the Tauri CLI for development
-cargo tauri dev
-```
-
-## Quick Start
-
-1. **Start Ollama** (if not already running):
-   ```bash
-   ollama serve
-   ```
-
-2. **Launch Prometheus CLI**:
-   ```bash
-   prometheus-cli
-   ```
-
-3. **Start chatting**:
-   ```
-   > What is Rust?
-   ```
-
-4. **Exit when done**:
-   ```
-   > /exit
-   ```
 
 ## Usage
 
-### Basic Usage
+### Interactive Mode
 
 ```bash
-# Use default configuration (config.toml)
+# Basic usage
 prometheus-cli
 
-# Specify custom backend URL
-prometheus-cli --url http://localhost:11434
+# With custom backend or model
+prometheus-cli --url http://localhost:11434 --model codellama
 
-# Use a specific model
-prometheus-cli --model llama2
-
-# Combine options
-prometheus-cli --url http://192.168.1.100:11434 --model codellama
+# Available commands
+> /help        # Show all commands
+> /new         # Start new conversation
+> /models      # List available models
+> /clear       # Clear screen
+> /exit        # Save and quit
 ```
 
-### Command-Line Arguments
+### Non-Interactive Mode
+
+Perfect for scripts, automation, and command-line workflows:
+
+```bash
+# Simple question
+prometheus-cli "What is the capital of France?"
+
+# Using pipes
+echo "Explain this error" | prometheus-cli
+
+# File analysis
+prometheus-cli --file main.rs "Review this code for bugs"
+
+# Multiple files
+prometheus-cli --file src/main.rs --file src/lib.rs "Summarize these modules"
+
+# Output control
+prometheus-cli --quiet "What is 2+2?"                    # Response only
+prometheus-cli --json "Generate a haiku"                 # JSON format
+prometheus-cli --no-stream "Write a long essay"          # Wait for complete response
+
+# Model parameters
+prometheus-cli --temperature 0.1 "Write precise documentation"
+prometheus-cli --max-tokens 100 "Brief explanation"
+prometheus-cli --system "You are a Python expert" "How do I parse JSON?"
+```
+
+### Advanced Examples
+
+```bash
+# Code review workflow
+prometheus-cli --file src/main.rs --system "You are a senior developer" \
+  --temperature 0.3 "Review this code for bugs and improvements"
+
+# Data processing pipeline
+cat data.csv | prometheus-cli --quiet --max-tokens 500 \
+  "Summarize the key trends in this data" > summary.txt
+
+# Batch processing
+for file in *.py; do
+  prometheus-cli --file "$file" --quiet "Rate this code quality 1-10" >> ratings.txt
+done
+
+# Error analysis with context
+tail -100 /var/log/app.log | prometheus-cli --system "You are a DevOps expert" \
+  "What's causing these errors and how to fix them?"
+
+# Command substitution
+commit_msg=$(prometheus-cli --quiet "Generate a git commit message for bug fixes")
+git commit -m "$commit_msg"
+```
+
+## Command-Line Arguments
 
 | Argument | Short | Description | Example |
 |----------|-------|-------------|---------|
-| `--url` | `-u` | Ollama backend URL (overrides config) | `-u http://localhost:11434` |
-| `--model` | `-m` | Model name to use (overrides config) | `-m llama2` |
+| `PROMPT` | | Prompt text (enables non-interactive mode) | `"What is Rust?"` |
+| `--url` | `-u` | Ollama backend URL | `-u http://localhost:11434` |
+| `--model` | `-m` | Model name to use | `-m llama2` |
 | `--config` | `-c` | Configuration file path | `-c /path/to/config.toml` |
-| `--help` | `-h` | Display help information | `-h` |
-| `--version` | `-V` | Display version information | `-V` |
+| `--file` | | Include file contents (repeatable) | `--file main.rs` |
+| `--system` | | System prompt for context | `--system "You are helpful"` |
+| `--temperature` | | Generation temperature (0.0-2.0) | `--temperature 0.7` |
+| `--max-tokens` | | Maximum response tokens | `--max-tokens 500` |
+| `--quiet` | `-q` | Output only response | `--quiet` |
+| `--json` | | Output in JSON format | `--json` |
+| `--no-stream` | | Wait for complete response | `--no-stream` |
+| `--verbose` | `-v` | Include debug information | `--verbose` |
+| `--save-on-interrupt` | | Save partial responses when interrupted | `--save-on-interrupt` |
 
-### Interactive Commands
+## Exit Codes (Non-Interactive Mode)
 
-Commands are prefixed with `/` and are case-insensitive:
-
-| Command | Description | Example |
-|---------|-------------|---------|
-| `/exit` | Save conversation and exit | `/exit` |
-| `/quit` | Alias for /exit | `/quit` |
-| `/clear` | Clear terminal screen (preserves history) | `/clear` |
-| `/new` | Save current conversation and start new one | `/new` |
-| `/help` | Display available commands | `/help` |
-| `/models` | List available models from backend | `/models` |
+| Exit Code | Meaning | Example Cause |
+|-----------|---------|---------------|
+| 0 | Success | Request completed successfully |
+| 1 | Invalid arguments | Empty prompt, invalid temperature |
+| 2 | Backend unreachable | Ollama server not running |
+| 3 | Authentication failed | Invalid API key |
+| 4 | Model unavailable | Model not found on server |
+| 5 | File error | File not found, permission denied |
+| 130 | Interrupted (SIGINT) | User pressed Ctrl+C |
+| 143 | Terminated (SIGTERM) | Process killed |
 
 ## Configuration
 
 ### Configuration File
 
-Prometheus CLI uses the same `config.toml` file as the GUI version. Create or edit `config.toml` in the project root:
+Create or edit `config.toml` in the project root:
 
 ```toml
 [app]
@@ -151,10 +195,6 @@ window_height = 650.0
 url = "http://localhost:11434"
 ollama_url = "http://localhost:11434"
 timeout_seconds = 30
-saved_urls = [
-    "https://api.openai.com/v1",
-    "http://192.168.1.100:8000"
-]
 
 [ui]
 font_size = 16
@@ -164,222 +204,31 @@ theme = "Hacker Green"
 
 ### Configuration Precedence
 
-Configuration values are applied in the following order (later overrides earlier):
-
 1. **Default values** - Built-in defaults
 2. **Config file** - Values from `config.toml`
 3. **CLI arguments** - Command-line flags (highest priority)
 
-Example:
-```bash
-# config.toml has: ollama_url = "http://localhost:11434"
-# This command will use http://192.168.1.100:11434 instead
-prometheus-cli --url http://192.168.1.100:11434
-```
+## Desktop Application
 
-### Configuration Options
-
-#### Backend Settings
-
-- `backend.ollama_url` - Ollama server URL (default: `http://localhost:11434`)
-- `backend.timeout_seconds` - Request timeout in seconds (default: `30`)
-
-#### Model Selection
-
-The model can be specified via:
-- CLI argument: `--model llama2`
-- Default: `llama2` if not specified
-
-## Common Workflows
-
-### Starting a Chat Session
+### Building and Running
 
 ```bash
-# Start with default settings
-prometheus-cli
+# Navigate to the Tauri directory
+cd src-tauri
 
-# You'll see:
-# Prometheus CLI v0.2.0 - Terminal AI Chat
-# Connected to: http://localhost:11434
-# Model: llama2
-# Type /help for available commands
-#
-# >
+# Development mode
+cargo tauri dev
+
+# Build for production
+cargo build --release
 ```
 
-### Changing Models
+### Features
 
-```bash
-# Method 1: Start with specific model
-prometheus-cli --model codellama
-
-# Method 2: Check available models during session
-> /models
-Available models:
-  - llama2
-  - codellama
-  - mistral
-  - llama2:13b
-
-# Then restart with desired model
-> /exit
-prometheus-cli --model codellama
-```
-
-### Managing Conversations
-
-```bash
-# Start a new conversation (saves current one)
-> /new
-Started new conversation
-
-# Conversations are automatically saved to:
-# conversations/<timestamp>.json
-
-# Clear screen without losing history
-> /clear
-```
-
-### Interrupting Long Responses
-
-```bash
-# During a long response, press Ctrl+C
-> Write a very long essay about...
-[AI starts responding...]
-^C
-Response generation interrupted by user
-
-# Partial response is saved to conversation
-# You're returned to the prompt
->
-```
-
-### Connecting to Remote Ollama
-
-```bash
-# Connect to Ollama on another machine
-prometheus-cli --url http://192.168.1.100:11434
-
-# Or use SSH tunnel for secure connection
-ssh -L 11434:localhost:11434 user@remote-server
-prometheus-cli --url http://localhost:11434
-```
-
-## Markdown Rendering
-
-Prometheus CLI renders markdown content with terminal formatting:
-
-### Code Blocks
-
-````
-> Show me a Python function
-
-```python
-def hello_world():
-    print("Hello, World!")
-```
-````
-
-Rendered with:
-- Syntax highlighting (if supported by terminal)
-- Bordered boxes
-- Distinct visual formatting
-
-### Inline Code
-
-```
-> How do I use the `print` function?
-```
-
-Inline code appears with different color/style.
-
-### Text Styling
-
-- **Bold text** - Rendered with bold terminal formatting
-- *Italic text* - Rendered with italic terminal formatting
-- Lists - Proper indentation and bullet points
-
-### Fallback Rendering
-
-If advanced markdown rendering fails, raw markdown is displayed in a readable format.
-
-## Conversation Management
-
-### Automatic Saving
-
-- Conversations are automatically saved after each message
-- Files stored in `conversations/` directory
-- Filename format: `<timestamp>.json`
-- Example: `conversations/2024-11-23T14-30-45.json`
-
-### Conversation Format
-
-```json
-{
-  "id": "uuid-here",
-  "name": "2024-11-23T14:30:45",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Hello!",
-      "timestamp": "2024-11-23T14:30:45Z"
-    },
-    {
-      "role": "assistant",
-      "content": "Hi! How can I help you?",
-      "timestamp": "2024-11-23T14:30:46Z"
-    }
-  ],
-  "created_at": "2024-11-23T14:30:45Z",
-  "updated_at": "2024-11-23T14:30:46Z",
-  "model": "llama2"
-}
-```
-
-### Manual Conversation Management
-
-```bash
-# View saved conversations
-ls -lh conversations/
-
-# Read a conversation
-cat conversations/2024-11-23T14-30-45.json | jq
-
-# Delete old conversations
-rm conversations/2024-11-*.json
-```
-
-## Signal Handling
-
-### Ctrl+C Behavior
-
-**At the prompt:**
-```
-> ^C
-Received interrupt signal. Saving conversation and exiting...
-Goodbye!
-```
-
-**During response generation:**
-```
-> Write a long essay...
-[AI responding...]
-^C
-Response generation interrupted by user
->
-```
-- Streaming stops immediately
-- Partial response is saved
-- Returns to prompt for new input
-
-### SIGTERM Handling
-
-```bash
-# Send SIGTERM to process
-kill <pid>
-
-# CLI saves conversation and exits cleanly
-```
+- **Conversation Management** - Browse and search chat history
+- **Persona System** - Switch between different AI personas
+- **Settings UI** - Configure without editing files
+- **Modern Interface** - Rich web-based UI with themes
 
 ## Troubleshooting
 
@@ -388,194 +237,86 @@ kill <pid>
 **Problem:** `Failed to connect to http://localhost:11434`
 
 **Solutions:**
-1. Check if Ollama is running:
-   ```bash
-   curl http://localhost:11434/api/tags
-   ```
+1. Check if Ollama is running: `curl http://localhost:11434/api/tags`
+2. Start Ollama: `ollama serve`
+3. Verify URL: `prometheus-cli --url http://localhost:11434`
 
-2. Start Ollama if not running:
-   ```bash
-   ollama serve
-   ```
-
-3. Verify the URL in config or CLI args:
-   ```bash
-   prometheus-cli --url http://localhost:11434
-   ```
-
-### Timeout Errors
-
-**Problem:** `Request timed out after 30s`
-
-**Solutions:**
-1. Increase timeout in config.toml:
-   ```toml
-   [backend]
-   timeout_seconds = 60
-   ```
-
-2. Check network connectivity to backend
-3. Try a smaller/faster model
-
-### Model Not Found
+### Model Issues
 
 **Problem:** `Model 'xyz' not found`
 
 **Solutions:**
-1. List available models:
-   ```bash
-   > /models
-   ```
-
-2. Pull the model with Ollama:
-   ```bash
-   ollama pull llama2
-   ```
-
+1. List available models: `prometheus-cli` then `/models`
+2. Pull the model: `ollama pull llama2`
 3. Verify model name spelling
 
-### Configuration Loading Failures
+### Non-Interactive Mode Issues
 
-**Problem:** `Warning: Failed to load config from config.toml`
-
-**Solutions:**
-1. Check if config.toml exists in current directory
-2. Verify TOML syntax:
-   ```bash
-   cat config.toml
-   ```
-
-3. Use CLI arguments as override:
-   ```bash
-   prometheus-cli --url http://localhost:11434 --model llama2
-   ```
-
-4. CLI will use defaults if config fails to load
-
-### Conversation Save Failures
-
-**Problem:** `Error: Failed to save conversation`
+**Problem:** Non-interactive mode not activating
 
 **Solutions:**
-1. Check write permissions:
-   ```bash
-   ls -ld conversations/
-   ```
-
-2. Create directory if missing:
-   ```bash
-   mkdir -p conversations
-   ```
-
-3. Check disk space:
-   ```bash
-   df -h .
-   ```
-
-### Terminal Display Issues
-
-**Problem:** Markdown not rendering correctly
-
-**Solutions:**
-1. Ensure terminal supports ANSI colors:
-   ```bash
-   echo -e "\033[1;32mGreen\033[0m"
-   ```
-
-2. Try a different terminal emulator (iTerm2, Alacritty, etc.)
-3. Raw markdown is displayed as fallback
+1. Ensure you provide a prompt: `prometheus-cli "Hello"` (not just `prometheus-cli --quiet`)
+2. Check stdin detection: `echo "test" | prometheus-cli`
+3. Verify file exists: `ls -la myfile.txt` before using `--file myfile.txt`
 
 ### Performance Issues
 
-**Problem:** Slow startup or response
-
 **Solutions:**
-1. Check backend response time:
-   ```bash
-   time curl http://localhost:11434/api/tags
-   ```
+1. Use smaller models: `prometheus-cli --model llama2:7b`
+2. Increase timeout: Edit `config.toml` and set `timeout_seconds = 60`
+3. Check system resources: `top`
 
-2. Use a smaller model:
-   ```bash
-   prometheus-cli --model llama2:7b
-   ```
+## Development
 
-3. Check system resources:
-   ```bash
-   top
-   ```
+### Repository Structure
 
-## Advanced Usage
-
-### Using with Different Backends
-
-While designed for Ollama, Prometheus CLI can work with compatible APIs:
-
-```bash
-# OpenAI-compatible endpoint
-prometheus-cli --url https://api.openai.com/v1
-
-# Local LLM server
-prometheus-cli --url http://localhost:8080
+```
+prometheus/
+├── prometheus-cli/          # CLI application
+├── src-tauri/              # Desktop application
+├── ui/                     # Web UI for desktop app
+├── archived-iced-gui/      # Legacy GUI (archived)
+├── config.toml             # Shared configuration
+└── conversations/          # Shared conversation storage
 ```
 
-### Scripting and Automation
+### Building Components
 
 ```bash
-# Non-interactive usage (pipe input)
-echo "What is 2+2?" | prometheus-cli
+# Build CLI only
+cargo build -p prometheus-cli
 
-# Capture output
-prometheus-cli --model llama2 < questions.txt > answers.txt
+# Build desktop app
+cd src-tauri && cargo build
+
+# Build everything
+cargo build --workspace
 ```
-
-### Environment Variables
-
-```bash
-# Set default URL via environment
-export OLLAMA_URL="http://localhost:11434"
-prometheus-cli
-```
-
-## Performance
-
-- **Startup time:** < 500ms on typical hardware
-- **Memory footprint:** < 50MB during idle
-- **Binary size:** ~10-15MB (statically linked)
-- **Streaming latency:** Near real-time (depends on backend)
-
-## Comparison: CLI vs Tauri
-
-| Feature | CLI | Tauri Desktop |
-|---------|-----|---------------|
-| Startup time | < 500ms | ~1-2s |
-| Memory usage | < 50MB | ~100-200MB |
-| Conversation history | Auto-save | Full browsing & search |
-| Markdown rendering | Terminal-based | Rich HTML |
-| Multi-window | No | Yes |
-| Server deployment | ✅ Ideal | ❌ Not suitable |
-| Remote SSH | ✅ Perfect | ❌ Requires X11 |
-| Persona management | Via config | Built-in UI |
-| Settings | Config file + CLI args | Graphical settings panel |
 
 ## Contributing
 
-Contributions are welcome! Please see the main project README for contribution guidelines.
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## License
 
-See the main project LICENSE file.
+See LICENSE file for details.
+
+## Documentation
+
+- **[Architecture](docs/ARCHITECTURE.md)** - Technical design and system overview
+- **[Changelog](docs/CHANGELOG.md)** - Version history and release notes
+- **Man Page:** `man prometheus-cli` (after installation)
 
 ## Support
 
-For issues, questions, or feature requests:
-- Open an issue on GitHub
-- Check existing documentation
-- Review troubleshooting section above
+- **In-App Help:** `/help` command in CLI
+- **Issues:** GitHub Issues
+- **Troubleshooting:** See sections above
 
-## See Also
+---
 
-- [Archived Iced GUI](archived-iced-gui/README.md) - Legacy Iced-based GUI documentation
-- [Architecture](docs/ARCHITECTURE.md) - System design
-- [Changelog](docs/CHANGELOG.md) - Version history
-- [Repository Structure](STRUCTURE.md) - Workspace organization explanation
+**Choose your interface:** Terminal for speed and automation, Desktop for rich interaction and conversation management.

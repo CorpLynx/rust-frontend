@@ -1,0 +1,43 @@
+[package]
+name = "prometheus-iced-gui"
+version = "0.2.0"
+edition = "2021"
+authors = ["Prometheus Contributors"]
+description = "Archived Iced GUI for Prometheus AI chat application"
+license = "MIT"
+
+[lib]
+name = "prometheus_iced_gui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "prometheus-gui"
+path = "src/main.rs"
+
+[dependencies]
+# Iced GUI-specific dependencies
+iced = { workspace = true }
+arboard = { workspace = true }
+syntect = { workspace = true }
+
+# Common dependencies
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+config = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+regex = { workspace = true }
+once_cell = { workspace = true }
+toml = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+tokio-stream = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+quickcheck = { workspace = true }
+quickcheck_macros = { workspace = true }
+mockito = { workspace = true }

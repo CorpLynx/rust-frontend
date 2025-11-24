@@ -1,6 +1,6 @@
 use crate::backend::BackendClient;
 use crate::config::{AppConfig, ColorTheme};
-use crate::conversation::{Conversation, ConversationManager, ConversationMetadata};
+use crate::conversation::{ChatMessage, Conversation, ConversationManager, ConversationMetadata};
 use crate::icons;
 use crate::markdown::{parse_message, MessageSegment};
 use crate::search::SearchEngine;
@@ -22,23 +22,6 @@ use once_cell::sync::Lazy;
 // Global state for streaming responses
 static STREAM_BUFFER: Lazy<Arc<Mutex<String>>> = Lazy::new(|| Arc::new(Mutex::new(String::new())));
 static STREAM_COMPLETE: Lazy<Arc<Mutex<bool>>> = Lazy::new(|| Arc::new(Mutex::new(false)));
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub role: String,
-    pub content: String,
-    pub timestamp: String,
-}
-
-impl ChatMessage {
-    pub fn new(role: String, content: String) -> Self {
-        Self {
-            role,
-            content,
-            timestamp: chrono::Local::now().format("%H:%M:%S").to_string(),
-        }
-    }
-}
 
 
 

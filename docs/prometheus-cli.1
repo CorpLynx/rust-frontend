@@ -1,0 +1,448 @@
+.TH PROMETHEUS-CLI 1 "November 2024" "Prometheus CLI 0.2.0" "User Commands"
+.SH NAME
+prometheus-cli \- terminal-based AI chat interface for Ollama
+.SH SYNOPSIS
+.B prometheus-cli
+[\fIOPTIONS\fR] [\fIPROMPT\fR]
+.SH DESCRIPTION
+.B prometheus-cli
+is a terminal-based interface for interacting with AI models through Ollama. It supports both interactive REPL (Read-Eval-Print Loop) mode for ongoing conversations and non-interactive mode for single-shot queries, making it suitable for both interactive use and automation workflows.
+.PP
+The CLI features fast startup (< 500ms), low memory usage (< 50MB), graceful interrupt handling, file integration, and flexible output formatting. All conversations are automatically saved with timestamps for later reference.
+.SS Execution Modes
+.TP
+.B Interactive Mode (default)
+Starts a REPL session for ongoing conversation when no prompt is provided.
+.TP
+.B Non-Interactive Mode
+Processes a single prompt and exits when a prompt argument is provided or input is piped via stdin. Perfect for scripts, automation, and command-line workflows.
+.SH OPTIONS
+.SS Positional Arguments
+.TP
+.B PROMPT
+Prompt text to process. When provided, enables non-interactive mode where the CLI processes this prompt and exits instead of starting an interactive session. Can be combined with stdin input and file contents.
+.SS General Options
+.TP
+.BR \-u ", " \-\-url " " \fIURL\fR
+Specify the Ollama backend URL. Overrides the URL specified in the configuration file. Supports both local and remote instances.
+.br
+Example: \fB\-u http://localhost:11434\fR, \fB\-u http://192.168.1.100:11434\fR
+.TP
+.BR \-m ", " \-\-model " " \fIMODEL\fR
+Specify the model name to use for chat. Overrides the model specified in the configuration file. Use 'ollama list' to see available models.
+.br
+Example: \fB\-m llama2\fR, \fB\-m codellama\fR, \fB\-m mistral\fR
+.TP
+.BR \-c ", " \-\-config " " \fIFILE\fR
+Specify the path to the configuration file. Default: \fBconfig.toml\fR
+.br
+Example: \fB\-c /etc/prometheus/config.toml\fR
+.SS Input Options
+.TP
+.BR \-\-file " " \fIPATH\fR
+Include file contents in the prompt. Can be used multiple times to include multiple files. Files are included in the order specified and binary files are rejected. Large files (>1MB) will show warnings.
+.br
+Example: \fB\-\-file main.rs\fR, \fB\-\-file src/lib.rs \-\-file README.md\fR
+.TP
+.BR \-\-system " " \fIPROMPT\fR
+Set a system prompt that provides context or instructions to the AI. This is prepended to your main prompt.
+.br
+Example: \fB\-\-system "You are a helpful coding assistant"\fR
+.SS Model Parameters
+.TP
+.BR \-\-temperature " " \fITEMP\fR
+Control randomness in responses (0.0-2.0). Lower values (0.1-0.7) are more focused, higher values (0.8-2.0) are more creative. Default varies by model.
+.br
+Example: \fB\-\-temperature 0.7\fR
+.TP
+.BR \-\-max-tokens " " \fICOUNT\fR
+Limit the length of the AI response. Useful for controlling output size in scripts or when processing many inputs.
+.br
+Example: \fB\-\-max-tokens 500\fR
+.SS Output Control
+.TP
+.BR \-q ", " \-\-quiet
+Output only the AI response without any formatting or status messages. Automatically enabled when stdout is redirected. Perfect for use in pipes and scripts.
+.TP
+.BR \-\-json
+Format the response as JSON with metadata including timestamp, length, and other details. Useful for programmatic processing of responses.
+.TP
+.BR \-\-no-stream
+Buffer the entire response before outputting anything instead of streaming. Useful when you need the complete response at once or when piping to tools that expect complete input.
+.TP
+.BR \-v ", " \-\-verbose
+Show additional information like prompt length, processing time, and model details. Debug output goes to stderr, so it won't interfere with response piping.
+.TP
+.BR \-\-save-on-interrupt
+In non-interactive mode, partial responses are normally discarded when interrupted. This flag saves them to conversation history even when interrupted.
+.SS Help Options
+.TP
+.BR \-h ", " \-\-help
+Display help information and exit.
+.TP
+.BR \-V ", " \-\-version
+Display version information and exit.
+.SH NON-INTERACTIVE MODE
+Non-interactive mode is activated when a prompt argument is provided or when input is piped via stdin. In this mode, the CLI processes the input and exits without starting a REPL session.
+.SS Input Sources
+Non-interactive mode can combine input from multiple sources:
+.TP
+.B Command-line prompt
+Direct prompt text as a positional argument.
+.TP
+.B Standard input (stdin)
+Piped input from other commands or redirected files.
+.TP
+.B File contents
+Files specified with \fB\-\-file\fR flags, included in order.
+.TP
+.B System prompt
+Context provided with \fB\-\-system\fR flag, prepended to the final prompt.
+.SS Input Processing Order
+When multiple input sources are provided, they are combined in this order:
+.RS
+.IP 1. 3
+System prompt (if provided)
+.IP 2. 3
+File contents (in order specified)
+.IP 3. 3
+Command-line prompt
+.IP 4. 3
+Stdin content (appended if available)
+.RE
+.SS Output Modes
+.TP
+.B Default mode
+Streams response in real-time with minimal formatting.
+.TP
+.B Quiet mode (\fB\-\-quiet\fR)
+Outputs only the AI response, no status messages. Automatically enabled when stdout is not a terminal.
+.TP
+.B JSON mode (\fB\-\-json\fR)
+Outputs structured JSON with response and metadata.
+.TP
+.B No-stream mode (\fB\-\-no-stream\fR)
+Waits for complete response before outputting anything.
+.SS Signal Handling
+.TP
+.B SIGINT (Ctrl+C)
+Stops processing and exits with code 130. Partial responses are discarded unless \fB\-\-save-on-interrupt\fR is used.
+.TP
+.B SIGTERM
+Stops processing and exits with code 143. Performs cleanup and saves partial responses if configured.
+.SH INTERACTIVE COMMANDS
+Commands are entered at the prompt and must be prefixed with a forward slash (/). Commands are case-insensitive.
+.TP
+.B /exit
+Save the current conversation and exit the application.
+.TP
+.B /quit
+Alias for \fB/exit\fR. Save the current conversation and exit the application.
+.TP
+.B /clear
+Clear the terminal screen while preserving conversation history in memory and on disk.
+.TP
+.B /new
+Save the current conversation and start a new conversation with a fresh timestamp-based name.
+.TP
+.B /help
+Display a list of available commands with descriptions.
+.TP
+.B /models
+Fetch and display the list of available models from the configured Ollama backend.
+.SH CONFIGURATION
+.B prometheus-cli
+reads configuration from a TOML file (default: \fBconfig.toml\fR in the current directory). Configuration values can be overridden by command-line arguments.
+.PP
+Configuration precedence (highest to lowest):
+.RS
+.IP 1. 3
+Command-line arguments
+.IP 2. 3
+Configuration file values
+.IP 3. 3
+Built-in defaults
+.RE
+.SS Configuration File Format
+The configuration file uses TOML format:
+.PP
+.nf
+.RS
+[backend]
+ollama_url = "http://localhost:11434"
+timeout_seconds = 30
+
+[app]
+window_title = "Prometheus v0.2.0"
+.RE
+.fi
+.SS Backend Settings
+.TP
+.B backend.ollama_url
+The URL of the Ollama backend server. Default: \fBhttp://localhost:11434\fR
+.TP
+.B backend.timeout_seconds
+Request timeout in seconds. Default: \fB30\fR
+.SH CONVERSATION MANAGEMENT
+Conversations are automatically saved after each message exchange. Files are stored in the \fBconversations/\fR directory with timestamp-based filenames.
+.SS File Format
+Conversations are saved in JSON format:
+.PP
+.nf
+.RS
+{
+  "id": "uuid",
+  "name": "2024-11-23T14:30:45",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello!",
+      "timestamp": "2024-11-23T14:30:45Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi! How can I help?",
+      "timestamp": "2024-11-23T14:30:46Z"
+    }
+  ],
+  "created_at": "2024-11-23T14:30:45Z",
+  "updated_at": "2024-11-23T14:30:46Z",
+  "model": "llama2"
+}
+.RE
+.fi
+.SS File Location
+Conversation files are stored in:
+.RS
+.B ./conversations/<timestamp>.json
+.RE
+.SH SIGNAL HANDLING
+.B prometheus-cli
+handles signals gracefully to ensure data integrity.
+.TP
+.B SIGINT (Ctrl+C)
+.RS
+.IP "At prompt:" 12
+Save conversation and exit cleanly.
+.IP "During streaming:" 12
+Stop response generation, save partial response, and return to prompt.
+.RE
+.TP
+.B SIGTERM
+Save conversation and exit immediately.
+.SH MARKDOWN RENDERING
+.B prometheus-cli
+renders markdown content with terminal formatting:
+.TP
+.B Code blocks
+Displayed with syntax highlighting (if supported), borders, and distinct visual formatting.
+.TP
+.B Inline code
+Displayed with different color or style to distinguish from regular text.
+.TP
+.B Text styling
+Bold and italic text rendered with appropriate terminal escape codes.
+.TP
+.B Lists
+Displayed with proper indentation and bullet points or numbers.
+.TP
+.B Fallback
+If advanced rendering fails, raw markdown is displayed in readable format.
+.SH EXAMPLES
+.SS Interactive Mode Examples
+.TP
+Start with default configuration:
+.B prometheus-cli
+.TP
+Connect to remote Ollama server:
+.B prometheus-cli \-u http://192.168.1.100:11434
+.TP
+Use specific model:
+.B prometheus-cli \-m codellama
+.TP
+Combine options:
+.B prometheus-cli \-u http://localhost:11434 \-m llama2:13b
+.TP
+Use custom config file:
+.B prometheus-cli \-c /etc/prometheus/config.toml
+.SS Non-Interactive Mode Examples
+.TP
+Simple question:
+.B prometheus-cli "What is the capital of France?"
+.TP
+Analyze a file:
+.B prometheus-cli \-\-file main.rs "Review this code for bugs"
+.TP
+Use with pipes:
+.B cat error.log | prometheus-cli "What caused this error?"
+.TP
+JSON output for scripts:
+.B prometheus-cli \-\-json \-\-quiet "Generate a UUID"
+.TP
+Custom model and parameters:
+.B prometheus-cli \-\-model codellama \-\-temperature 0.3 "Write a Python function"
+.TP
+Multiple files with system prompt:
+.B prometheus-cli \-\-file src/main.rs \-\-file src/lib.rs \-\-system "You are a code reviewer" "Find potential issues"
+.TP
+Batch processing:
+.B for file in *.py; do prometheus-cli \-\-file "$file" \-\-quiet "Rate this code 1-10" >> ratings.txt; done
+.TP
+Command substitution:
+.B commit_msg=$(prometheus-cli \-\-quiet "Generate a git commit message for bug fixes")
+.TP
+Error analysis with context:
+.B tail -100 /var/log/app.log | prometheus-cli \-\-system "You are a DevOps expert" "What's causing these errors?"
+.SH FILES
+.TP
+.B config.toml
+Default configuration file in current directory.
+.TP
+.B conversations/*.json
+Saved conversation files with timestamp-based names.
+.TP
+.B ~/.prometheus/
+Optional user configuration directory (future enhancement).
+.SH ENVIRONMENT
+.TP
+.B RUST_LOG
+Set logging level for debugging. Example: \fBRUST_LOG=debug prometheus-cli\fR
+.SH EXIT STATUS
+.B prometheus-cli
+uses specific exit codes in non-interactive mode for error handling in scripts:
+.TP
+.B 0
+Successful execution and clean exit.
+.TP
+.B 1
+Invalid arguments (empty prompt, invalid temperature, etc.).
+.TP
+.B 2
+Backend unreachable (Ollama server not running, network issues).
+.TP
+.B 3
+Authentication failed (invalid API key, permission denied).
+.TP
+.B 4
+Model unavailable (model not found on server).
+.TP
+.B 5
+File error (file not found, permission denied, binary file).
+.TP
+.B 130
+Interrupted by SIGINT (Ctrl+C).
+.TP
+.B 143
+Terminated by SIGTERM.
+.SH DIAGNOSTICS
+Common error messages and their meanings:
+.SS Connection Errors
+.TP
+.B "Failed to connect to <URL>"
+Cannot reach the Ollama backend. Verify the URL and ensure Ollama is running.
+.TP
+.B "Request timed out after <N>s"
+Backend did not respond within the configured timeout. Increase timeout_seconds or check backend performance.
+.SS Configuration Errors
+.TP
+.B "Warning: Failed to load config from <FILE>"
+Configuration file could not be loaded. CLI will use default values. Check file path and TOML syntax.
+.TP
+.B "Invalid parameters: <details>"
+Command-line arguments are invalid. Check temperature range (0.0-2.0) and max-tokens (positive integer).
+.SS File Errors
+.TP
+.B "File not found: <path>"
+Specified file with \fB\-\-file\fR does not exist. Check file path and permissions.
+.TP
+.B "File appears to be binary: <path>"
+File contains binary data and cannot be included in prompt. Use text files only.
+.TP
+.B "Cannot read file: <path>"
+File exists but cannot be read. Check file permissions.
+.SS Input Errors
+.TP
+.B "Prompt cannot be empty"
+Empty or whitespace-only prompt provided in non-interactive mode.
+.TP
+.B "Failed to process input: <details>"
+Error combining prompt, stdin, and file inputs. Check file accessibility and content.
+.SS Interactive Mode Errors
+.TP
+.B "Error: Failed to save conversation"
+Cannot write conversation file. Check write permissions and disk space in conversations/ directory.
+.TP
+.B "Unknown command: /<CMD>"
+Invalid command entered. Type \fB/help\fR for available commands.
+.SH PERFORMANCE
+.TP
+.B Startup time
+Less than 500 milliseconds on typical hardware.
+.TP
+.B Memory footprint
+Less than 50MB during idle operation.
+.TP
+.B Binary size
+Approximately 10-15MB (statically linked).
+.TP
+.B Streaming latency
+Near real-time, dependent on backend response time.
+.SH SECURITY CONSIDERATIONS
+.IP \(bu 2
+Conversation files are created with user-only read/write permissions (0600).
+.IP \(bu 2
+URLs from configuration are validated to prevent injection attacks.
+.IP \(bu 2
+Error messages avoid leaking sensitive information.
+.IP \(bu 2
+No special input sanitization is performed; all input is sent to backend as-is.
+.SH BUGS
+Report bugs to the project issue tracker on GitHub.
+.SH SEE ALSO
+.BR ollama (1),
+.BR curl (1),
+.BR jq (1)
+.PP
+Project documentation:
+.RS
+.IP \(bu 2
+README-CLI.md - Comprehensive usage guide
+.IP \(bu 2
+docs/ARCHITECTURE.md - System design documentation
+.IP \(bu 2
+docs/CHANGELOG.md - Version history
+.RE
+.SH AUTHOR
+Prometheus CLI is part of the Prometheus project.
+.SH COPYRIGHT
+See the project LICENSE file for copyright and licensing information.
+.SH NOTES
+.SS Terminal Compatibility
+Tested on:
+.RS
+.IP \(bu 2
+macOS: Terminal.app, iTerm2, Alacritty
+.IP \(bu 2
+Linux: GNOME Terminal, Konsole, xterm
+.IP \(bu 2
+Windows: Windows Terminal, PowerShell
+.RE
+.SS Remote Usage
+.B prometheus-cli
+is ideal for remote SSH sessions:
+.PP
+.nf
+.RS
+ssh user@server
+prometheus-cli
+.RE
+.fi
+.SS SSH Tunneling
+For secure connections to remote Ollama instances:
+.PP
+.nf
+.RS
+ssh -L 11434:localhost:11434 user@remote-server
+prometheus-cli \-u http://localhost:11434
+.RE
+.fi

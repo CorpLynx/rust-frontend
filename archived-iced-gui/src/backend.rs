@@ -18,6 +18,7 @@ pub struct OllamaModelsResponse {
 }
 
 /// Backend client for communicating with Ollama instances
+#[derive(Clone)]
 pub struct BackendClient {
     client: Client,
     base_url: String,
@@ -75,13 +76,15 @@ impl BackendClient {
             .json(&request_body)
             .send()
             .await
-            .context("Failed to send request to backend")?;
+            .context(format!("Failed to connect to {}", self.base_url))?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
             anyhow::bail!(
                 "Backend returned error status: {} - {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
+                status.as_u16(),
+                error_body
             );
         }
 
@@ -140,13 +143,15 @@ impl BackendClient {
             .get(&url)
             .send()
             .await
-            .context("Failed to fetch models from backend")?;
+            .context(format!("Failed to connect to {}", self.base_url))?;
 
         if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response.text().await.unwrap_or_default();
             anyhow::bail!(
                 "Backend returned error status: {} - {}",
-                response.status(),
-                response.text().await.unwrap_or_default()
+                status.as_u16(),
+                error_body
             );
         }
 
