@@ -164,6 +164,15 @@ impl ConversationManager {
         }
     }
 
+    pub fn with_directory<P: Into<PathBuf>>(conversations_dir: P) -> Self {
+        let conversations_dir = conversations_dir.into();
+        let metadata_path = conversations_dir.join("metadata.json");
+        Self {
+            conversations_dir,
+            metadata_path,
+        }
+    }
+
     pub fn load_metadata(&self) -> Result<MetadataFile> {
         if !self.metadata_path.exists() {
             return Ok(MetadataFile::new());
@@ -171,6 +180,11 @@ impl ConversationManager {
 
         let content = fs::read_to_string(&self.metadata_path)
             .context("Failed to read metadata file")?;
+        
+        // Handle empty file
+        if content.trim().is_empty() {
+            return Ok(MetadataFile::new());
+        }
         
         let mut metadata: MetadataFile = serde_json::from_str(&content)
             .context("Failed to parse metadata file")?;
@@ -180,6 +194,12 @@ impl ConversationManager {
     }
 
     pub fn save_metadata(&self, metadata: &MetadataFile) -> Result<()> {
+        // Ensure the conversations directory exists
+        if !self.conversations_dir.exists() {
+            fs::create_dir_all(&self.conversations_dir)
+                .context("Failed to create conversations directory")?;
+        }
+        
         let content = serde_json::to_string_pretty(metadata)
             .context("Failed to serialize metadata")?;
         
@@ -206,6 +226,12 @@ impl ConversationManager {
     }
 
     pub fn save_conversation(&self, conversation: &Conversation) -> Result<()> {
+        // Ensure the conversations directory exists
+        if !self.conversations_dir.exists() {
+            fs::create_dir_all(&self.conversations_dir)
+                .context("Failed to create conversations directory")?;
+        }
+        
         let path = self.conversations_dir.join(format!("{}.json", conversation.id));
         
         let content = serde_json::to_string_pretty(conversation)

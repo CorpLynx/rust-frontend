@@ -32,7 +32,12 @@ tokio-stream = { workspace = true }
 futures = { workspace = true }
 toml = { workspace = true }
 
+# System dependencies
+libc = { workspace = true }
+ctrlc = { workspace = true }
+
 [dev-dependencies]
 quickcheck = { workspace = true }
 quickcheck_macros = { workspace = true }
 mockito = { workspace = true }
+tempfile = { workspace = true }

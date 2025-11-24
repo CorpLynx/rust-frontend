@@ -125,6 +125,42 @@ impl Terminal {
         Ok(())
     }
 
+    /// Write a warning message with formatting
+    ///
+    /// # Arguments
+    /// * `warning` - The warning message
+    pub fn write_warning(&mut self, warning: &str) -> Result<()> {
+        execute!(
+            self.stdout,
+            SetForegroundColor(Color::Yellow),
+            Print("Warning: "),
+            ResetColor,
+            Print(warning),
+            Print("\n")
+        )
+        .context("Failed to write warning message")?;
+        self.stdout.flush().context("Failed to flush stdout")?;
+        Ok(())
+    }
+
+    /// Write a success message with formatting
+    ///
+    /// # Arguments
+    /// * `success` - The success message
+    pub fn write_success(&mut self, success: &str) -> Result<()> {
+        execute!(
+            self.stdout,
+            SetForegroundColor(Color::Green),
+            Print("Success: "),
+            ResetColor,
+            Print(success),
+            Print("\n")
+        )
+        .context("Failed to write success message")?;
+        self.stdout.flush().context("Failed to flush stdout")?;
+        Ok(())
+    }
+
     /// Write text in green color
     ///
     /// # Arguments

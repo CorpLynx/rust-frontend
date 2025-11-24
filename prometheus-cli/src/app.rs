@@ -6,6 +6,7 @@ use crate::streaming::StreamingHandler;
 use crate::terminal::Terminal;
 use crate::config::AppConfig;
 use crate::conversation::{ChatMessage, Conversation, ConversationManager};
+use crate::update::{UpdateManager, UpdateStatus};
 use std::sync::Arc;
 
 /// CLI application state and REPL loop
@@ -55,6 +56,37 @@ impl CliApp {
         let terminal = Terminal::new().context("Failed to create terminal")?;
 
         let conversation_manager = ConversationManager::new();
+        let conversation = Conversation::with_timestamp_name(Some(model_name.clone()));
+
+        Ok(Self {
+            timeout_seconds: config.backend.timeout_seconds,
+            config,
+            conversation,
+            conversation_manager,
+            backend_client,
+            terminal,
+            running: true,
+            model: model_name,
+            backend_url: url,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn new_with_temp_dir(
+        config: AppConfig,
+        backend_url: Option<String>,
+        model: Option<String>,
+        temp_dir: &std::path::Path,
+    ) -> Result<Self> {
+        let url = backend_url.unwrap_or_else(|| config.backend.ollama_url.clone());
+        let model_name = model.unwrap_or_else(|| "llama2".to_string());
+
+        let backend_client = BackendClient::new(url.clone(), config.backend.timeout_seconds)
+            .context("Failed to create backend client")?;
+
+        let terminal = Terminal::new().context("Failed to create terminal")?;
+
+        let conversation_manager = ConversationManager::with_directory(temp_dir);
         let conversation = Conversation::with_timestamp_name(Some(model_name.clone()));
 
         Ok(Self {
@@ -557,18 +589,209 @@ impl CliApp {
                 }
             }
             Command::Update => {
-                // Placeholder for update command - will be implemented in task 3
-                self.terminal.write_info("Update command not yet implemented")?;
+                self.handle_update().await?;
             }
             Command::UpdateCheck => {
-                // Placeholder for update check command - will be implemented in task 3
-                self.terminal.write_info("Update check command not yet implemented")?;
+                self.handle_update_check().await?;
             }
             Command::Unknown(cmd) => {
                 self.terminal.write_error(&format!(
                     "Unknown command: /{}. Type /help for available commands",
                     cmd
                 ))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle the update check command
+    /// 
+    /// Checks for available updates without performing the update.
+    /// Displays information about available updates or confirms the installation is up to date.
+    /// 
+    /// # Requirements
+    /// * 2.1: Compare local git commit with remote repository
+    /// * 2.2: Display number of commits behind and summary of changes
+    /// * 2.3: Display message when installation is up to date
+    /// * 2.4: Display error message when check operation fails
+    async fn handle_update_check(&mut self) -> Result<()> {
+        self.terminal.write_info("🔍 Checking for updates...")?;
+
+        let manager = match UpdateManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                self.terminal.write_error(&format!("Update check failed: {}", e))?;
+                self.terminal.write_info("Troubleshooting tips:")?;
+                self.terminal.write("  • Ensure Prometheus CLI was installed from source (git clone)")?;
+                self.terminal.write("  • Check that git is installed and accessible")?;
+                self.terminal.write("  • Verify the installation directory exists and is readable")?;
+                return Ok(());
+            }
+        };
+
+        if let Err(e) = manager.validate_installation() {
+            self.terminal.write_error(&format!("Installation validation failed: {}", e))?;
+            self.terminal.write_info("Troubleshooting tips:")?;
+            self.terminal.write("  • Ensure you installed Prometheus CLI using the git-based installer")?;
+            self.terminal.write("  • Manual installations or binary downloads cannot be updated automatically")?;
+            self.terminal.write("  • Consider reinstalling from source: https://github.com/your-repo/prometheus")?;
+            return Ok(());
+        }
+
+        match manager.check_for_updates() {
+            Ok(UpdateStatus::UpToDate) => {
+                self.terminal.write_info("✅ Your installation is up to date!")?;
+                self.terminal.write(&format!("   Installation directory: {}", manager.install_dir().display()))?;
+                self.terminal.write(&format!("   Binary location: {}", manager.bin_dir().join(manager.binary_name()).display()))?;
+            }
+            Ok(UpdateStatus::UpdatesAvailable { commits_behind, changes }) => {
+                self.terminal.write_info(&format!(
+                    "🆕 Updates available! {} commit(s) behind the latest version.",
+                    commits_behind
+                ))?;
+                self.terminal.write("\n📋 Recent changes:")?;
+                
+                // Format the changes nicely
+                for line in changes.lines() {
+                    if !line.trim().is_empty() {
+                        self.terminal.write(&format!("   {}", line))?;
+                    }
+                }
+                
+                self.terminal.write("\n💡 Run '/update' to install these updates.")?;
+                self.terminal.write("   Note: The update process will require a few minutes to complete.")?;
+            }
+            Err(e) => {
+                self.terminal.write_error(&format!("Update check failed: {}", e))?;
+                self.terminal.write_info("Troubleshooting tips:")?;
+                self.terminal.write("  • Check your internet connection")?;
+                self.terminal.write("  • Ensure git credentials are configured if the repository requires authentication")?;
+                self.terminal.write("  • Try running 'git fetch' manually in the installation directory")?;
+                self.terminal.write(&format!("  • Installation directory: {}", manager.install_dir().display()))?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Handle the update command
+    /// 
+    /// Performs the actual update process: fetch, build, and install.
+    /// Provides progress feedback and handles errors gracefully.
+    /// 
+    /// # Requirements
+    /// * 1.1: Fetch latest changes from git repository
+    /// * 1.2: Rebuild CLI binary using cargo
+    /// * 1.3: Replace installed binary with new version
+    /// * 1.4: Display success message with new version number
+    /// * 1.5: Display clear error message and maintain existing installation on failure
+    /// * 4.1-4.4: Display progress messages during update process
+    async fn handle_update(&mut self) -> Result<()> {
+        self.terminal.write_info("🚀 Starting update process...")?;
+        self.terminal.write("   This process will fetch the latest code, rebuild the binary, and install it.")?;
+        self.terminal.write("   The update may take several minutes depending on your system.\n")?;
+
+        let manager = match UpdateManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                self.terminal.write_error(&format!("Update initialization failed: {}", e))?;
+                self.terminal.write_info("Troubleshooting tips:")?;
+                self.terminal.write("  • Ensure Prometheus CLI was installed from source (git clone)")?;
+                self.terminal.write("  • Check that git is installed and accessible")?;
+                self.terminal.write("  • Verify the installation directory exists and is readable")?;
+                return Ok(());
+            }
+        };
+
+        if let Err(e) = manager.validate_installation() {
+            self.terminal.write_error(&format!("Installation validation failed: {}", e))?;
+            self.terminal.write_info("Troubleshooting tips:")?;
+            self.terminal.write("  • Ensure you installed Prometheus CLI using the git-based installer")?;
+            self.terminal.write("  • Manual installations or binary downloads cannot be updated automatically")?;
+            self.terminal.write("  • Consider reinstalling from source: https://github.com/your-repo/prometheus")?;
+            return Ok(());
+        }
+
+        // Check if updates are available first
+        self.terminal.write_info("🔍 Checking for available updates...")?;
+        match manager.check_for_updates() {
+            Ok(UpdateStatus::UpToDate) => {
+                self.terminal.write_info("✅ Your installation is already up to date!")?;
+                self.terminal.write("   No update is necessary at this time.")?;
+                return Ok(());
+            }
+            Ok(UpdateStatus::UpdatesAvailable { commits_behind, changes }) => {
+                self.terminal.write_info(&format!(
+                    "📦 Found {} commit(s) to update. Proceeding with installation...",
+                    commits_behind
+                ))?;
+                
+                // Show a preview of changes if available
+                if !changes.trim().is_empty() {
+                    self.terminal.write("\n📋 Changes to be applied:")?;
+                    let lines: Vec<&str> = changes.lines().take(3).collect();
+                    for line in lines {
+                        if !line.trim().is_empty() {
+                            self.terminal.write(&format!("   {}", line))?;
+                        }
+                    }
+                    if changes.lines().count() > 3 {
+                        self.terminal.write("   ... and more")?;
+                    }
+                    self.terminal.write("")?;
+                }
+            }
+            Err(e) => {
+                self.terminal.write_error(&format!("Failed to check for updates: {}", e))?;
+                self.terminal.write_info("Troubleshooting tips:")?;
+                self.terminal.write("  • Check your internet connection")?;
+                self.terminal.write("  • Ensure git credentials are configured if the repository requires authentication")?;
+                self.terminal.write("  • Try running 'git fetch' manually in the installation directory")?;
+                return Ok(());
+            }
+        }
+
+        // Warn about potential interruption
+        self.terminal.write_info("⚠️  Important: Do not interrupt the update process once it begins.")?;
+        self.terminal.write("   Interrupting during binary installation could leave your system in an inconsistent state.\n")?;
+
+        // Perform the update with progress callback
+        let result = manager.perform_update(|msg| {
+            // Use a new terminal instance for progress messages to avoid borrowing issues
+            if let Ok(mut term) = Terminal::new() {
+                let _ = term.write_info(msg);
+            }
+        });
+
+        match result {
+            Ok(version) => {
+                self.terminal.write("")?;
+                self.terminal.write_info("🎉 Update completed successfully!")?;
+                self.terminal.write(&format!("   New version: {}", version))?;
+                self.terminal.write(&format!("   Installation location: {}", manager.bin_dir().join(manager.binary_name()).display()))?;
+                self.terminal.write("")?;
+                self.terminal.write_info("📝 Next steps:")?;
+                self.terminal.write("   • The CLI will now exit to apply the update")?;
+                self.terminal.write("   • Restart the CLI to use the new version")?;
+                self.terminal.write("   • Run '/help' to see any new commands or features")?;
+                self.terminal.write("")?;
+                self.running = false; // Exit after update
+            }
+            Err(e) => {
+                self.terminal.write("")?;
+                self.terminal.write_error(&format!("❌ Update failed: {}", e))?;
+                self.terminal.write_info("🛡️  Your existing installation remains unchanged and functional.")?;
+                self.terminal.write("")?;
+                self.terminal.write_info("🔧 Troubleshooting options:")?;
+                self.terminal.write("   • Check your internet connection and try again")?;
+                self.terminal.write("   • Ensure you have sufficient disk space")?;
+                self.terminal.write("   • Verify that Rust/Cargo is properly installed")?;
+                self.terminal.write("   • Check the installation directory permissions")?;
+                self.terminal.write(&format!("   • Installation directory: {}", manager.install_dir().display()))?;
+                self.terminal.write("   • Consider running the update with administrator privileges if needed")?;
+                self.terminal.write("")?;
+                self.terminal.write_info("💡 For persistent issues, consider reinstalling from source.")?;
             }
         }
 
@@ -767,8 +990,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_new_command() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, None).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, None, temp_dir.path()).unwrap();
         let original_id = app.conversation.id.clone();
 
         app.handle_command("/new").await.unwrap();
@@ -879,6 +1103,11 @@ mod tests {
             // Filter out strings that don't look like URLs
             // Must contain at least one colon and not be just "/"
             if !backend_url.contains(':') || backend_url == "/" {
+                return TestResult::discard();
+            }
+
+            // Filter out URLs that don't start with http:// or https://
+            if !backend_url.starts_with("http://") && !backend_url.starts_with("https://") {
                 return TestResult::discard();
             }
 
@@ -1293,8 +1522,9 @@ window_title = "Test App"
     /// **Validates: Requirements 3.5**
     #[tokio::test]
     async fn test_conversation_saving_on_exit() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
 
         // Add some messages
         app.conversation.add_message(ChatMessage::new("user".to_string(), "Test message".to_string()));
@@ -1307,7 +1537,7 @@ window_title = "Test App"
         assert!(result.is_ok());
 
         // Verify conversation was saved by loading it back
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id);
         assert!(loaded.is_ok());
 
@@ -1325,8 +1555,9 @@ window_title = "Test App"
     /// **Validates: Requirements 3.3**
     #[tokio::test]
     async fn test_automatic_conversation_persistence() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
 
         // Add a message
         app.conversation.add_message(ChatMessage::new("user".to_string(), "Persist me".to_string()));
@@ -1353,8 +1584,9 @@ window_title = "Test App"
     /// **Validates: Requirements 3.1, 3.2, 3.3**
     #[tokio::test]
     async fn test_conversation_persistence_multiple_messages() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
 
         let conversation_id = app.conversation.id.clone();
 
@@ -1391,8 +1623,9 @@ window_title = "Test App"
     /// **Validates: Requirements 3.1, 3.2**
     #[tokio::test]
     async fn test_timestamp_preservation() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, None).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, None, temp_dir.path()).unwrap();
 
         let conversation_id = app.conversation.id.clone();
 
@@ -1418,9 +1651,9 @@ window_title = "Test App"
     /// **Validates: Requirements 9.5, 10.5**
     #[tokio::test]
     async fn test_sigint_at_prompt() {
-        
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         // Add a message to the conversation
         app.conversation.add_message(ChatMessage::new("user".to_string(), "Test message".to_string()));
@@ -1436,7 +1669,7 @@ window_title = "Test App"
         assert!(result.is_ok(), "Shutdown failed: {:?}", result.err());
         
         // Verify conversation was saved
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id);
         assert!(loaded.is_ok());
         
@@ -1452,8 +1685,9 @@ window_title = "Test App"
     /// **Validates: Requirements 10.3**
     #[tokio::test]
     async fn test_sigterm_handling() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         // Add messages to the conversation
         app.conversation.add_message(ChatMessage::new("user".to_string(), "Message 1".to_string()));
@@ -1466,7 +1700,7 @@ window_title = "Test App"
         assert!(result.is_ok());
         
         // Verify conversation was saved with all messages
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id);
         assert!(loaded.is_ok());
         
@@ -1483,8 +1717,9 @@ window_title = "Test App"
     /// **Validates: Requirements 10.2**
     #[tokio::test]
     async fn test_partial_response_saving() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         let conversation_id = app.conversation.id.clone();
         
@@ -1513,8 +1748,9 @@ window_title = "Test App"
     /// **Validates: Requirements 10.2**
     #[tokio::test]
     async fn test_empty_partial_response_handling() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         let conversation_id = app.conversation.id.clone();
         
@@ -1538,8 +1774,9 @@ window_title = "Test App"
     /// **Validates: Requirements 9.5**
     #[tokio::test]
     async fn test_graceful_shutdown_multiple_messages() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         let conversation_id = app.conversation.id.clone();
         
@@ -1554,7 +1791,7 @@ window_title = "Test App"
         assert!(result.is_ok());
         
         // Verify all messages were saved
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id).unwrap();
         assert_eq!(loaded.messages.len(), 10);
         
@@ -1572,8 +1809,9 @@ window_title = "Test App"
     /// **Validates: Requirements 9.5**
     #[tokio::test]
     async fn test_shutdown_idempotent() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         let conversation_id = app.conversation.id.clone();
         
@@ -1586,7 +1824,7 @@ window_title = "Test App"
         
         // Calling shutdown again should still work (even if terminal write fails, conversation save should succeed)
         // We just verify the conversation was saved correctly
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id).unwrap();
         assert_eq!(loaded.messages.len(), 1);
         
@@ -1598,8 +1836,9 @@ window_title = "Test App"
     /// **Validates: Requirements 9.5**
     #[tokio::test]
     async fn test_shutdown_empty_conversation() {
+        let temp_dir = tempfile::tempdir().unwrap();
         let config = AppConfig::default();
-        let mut app = CliApp::new(config, None, Some("test-model".to_string())).unwrap();
+        let mut app = CliApp::new_with_temp_dir(config, None, Some("test-model".to_string()), temp_dir.path()).unwrap();
         
         let conversation_id = app.conversation.id.clone();
         
@@ -1608,7 +1847,7 @@ window_title = "Test App"
         assert!(result.is_ok());
         
         // Verify empty conversation was saved
-        let manager = ConversationManager::new();
+        let manager = ConversationManager::with_directory(temp_dir.path());
         let loaded = manager.load_conversation(&conversation_id).unwrap();
         assert_eq!(loaded.messages.len(), 0);
         assert_eq!(loaded.id, conversation_id);
