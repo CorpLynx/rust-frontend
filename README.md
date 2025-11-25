@@ -353,11 +353,37 @@ See LICENSE file for details.
 
 - **[Architecture](docs/ARCHITECTURE.md)** - Technical design and system overview
 - **[Changelog](docs/CHANGELOG.md)** - Version history and release notes
-- **Man Page:** `man prometheus-cli` (after installation)
+- **Man Page:** `man prometheus-cli` - Comprehensive command reference
+- **Shell Completions:** Tab completion for all commands and options
+
+### Shell Completions
+
+Prometheus CLI supports auto-completion for all commands and options:
+
+```bash
+# Generate completions for your shell
+prometheus-cli --generate-completions zsh > ~/.zsh/completions/_prometheus-cli
+prometheus-cli --generate-completions bash > ~/.bash_completions/prometheus-cli
+
+# Add to your shell config (zsh example)
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -U compinit && compinit' >> ~/.zshrc
+
+# Reload shell
+source ~/.zshrc
+```
+
+Now you can use tab completion:
+```bash
+prometheus-cli --<TAB>          # Shows all options
+prometheus-cli --url <TAB>      # URL completion
+prometheus-cli --model <TAB>    # Model completion
+```
 
 ## Support
 
 - **In-App Help:** `/help` command in CLI
+- **Man Page:** `man prometheus-cli` (comprehensive reference)
 - **Issues:** GitHub Issues
 - **Troubleshooting:** See sections above
 

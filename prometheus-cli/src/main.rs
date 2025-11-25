@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use clap::Parser;
+use clap::{Parser, CommandFactory};
+use clap_complete::{generate, Shell};
 
 mod app;
 mod backend;
@@ -179,12 +180,26 @@ struct Args {
     /// This flag saves them to conversation history even when interrupted.
     #[arg(long, help = "Save partial responses on interruption")]
     save_on_interrupt: bool,
+
+    /// Generate shell completions
+    /// 
+    /// Generate shell completion scripts for bash, zsh, fish, or PowerShell.
+    /// Example: prometheus-cli --generate-completions zsh > ~/.zsh/completions/_prometheus-cli
+    #[arg(long = "generate-completions", value_name = "SHELL", help = "Generate shell completions")]
+    generate_completions: Option<Shell>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Parse command-line arguments
     let args = Args::parse();
+
+    // Handle completion generation
+    if let Some(shell) = args.generate_completions {
+        let mut cmd = Args::command();
+        generate(shell, &mut cmd, "prometheus-cli", &mut std::io::stdout());
+        return Ok(());
+    }
 
     // Initialize logging
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();

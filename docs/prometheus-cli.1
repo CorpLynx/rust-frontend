@@ -84,6 +84,11 @@ Display help information and exit.
 .TP
 .BR \-V ", " \-\-version
 Display version information and exit.
+.TP
+.BR \-\-generate-completions " " \fISHELL\fR
+Generate shell completion scripts for bash, zsh, fish, or PowerShell. Output the completion script to stdout.
+.br
+Example: \fBprometheus-cli --generate-completions zsh > ~/.zsh/completions/_prometheus-cli\fR
 .SH NON-INTERACTIVE MODE
 Non-interactive mode is activated when a prompt argument is provided or when input is piped via stdin. In this mode, the CLI processes the input and exits without starting a REPL session.
 .SS Input Sources

@@ -25,6 +25,7 @@ url = "2.4"
 # CLI-specific dependencies
 crossterm = "0.27"
 clap = { version = "4.4", features = ["derive"] }
+clap_complete = "4.4"
 termimad = "0.28"
 
 # Iced GUI-specific dependencies

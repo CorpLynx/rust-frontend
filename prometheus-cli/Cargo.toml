@@ -10,10 +10,15 @@ license = "MIT"
 name = "prometheus-cli"
 path = "src/main.rs"
 
+[lib]
+name = "prometheus_cli"
+path = "src/lib.rs"
+
 [dependencies]
 # CLI-specific dependencies
 crossterm = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 termimad = { workspace = true }
 
 # Common dependencies
