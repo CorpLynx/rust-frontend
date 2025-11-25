@@ -24,8 +24,7 @@ impl NonInteractiveHandler {
         _options: &NonInteractiveOptions,
     ) -> Result<Self> {
         let url = backend_url.unwrap_or_else(|| config.backend.ollama_url.clone());
-        let backend_client = BackendClient::new(url, config.backend.timeout_seconds)
-            .context("Failed to create backend client")?;
+        let backend_client = BackendClient::new(url, config.backend.timeout_seconds)?;
         
         let output_formatter = OutputFormatter::new();
         let interrupted = Arc::new(AtomicBool::new(false));

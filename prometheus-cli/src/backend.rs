@@ -3,6 +3,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+use crate::url_validator::UrlValidator;
 
 /// Response from Ollama's /api/tags endpoint
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +32,19 @@ impl BackendClient {
     /// # Arguments
     /// * `base_url` - The base URL of the Ollama instance (e.g., "http://localhost:11434")
     /// * `timeout_seconds` - Request timeout in seconds
+    /// 
+    /// # Requirements
+    /// * 1.1: Reject remote HTTP URLs with error message
+    /// * 1.2: Accept remote HTTPS URLs
+    /// * 2.1, 2.2, 2.3: Allow HTTP for localhost URLs
+    /// * 4.1: Validate URLs before creating backend client
     pub fn new(base_url: String, timeout_seconds: u64) -> Result<Self> {
+        // Validate the backend URL for HTTPS compliance
+        if let Err(validation_error) = UrlValidator::validate_backend_url(&base_url) {
+            // Return the validation error directly to preserve error categorization
+            return Err(anyhow::anyhow!("{}", validation_error));
+        }
+
         let client = Client::builder()
             .timeout(Duration::from_secs(timeout_seconds))
             .build()
@@ -255,8 +268,8 @@ mod tests {
         let client2 = BackendClient::new("https://api.example.com".to_string(), 30).unwrap();
         assert_eq!(client2.base_url(), "https://api.example.com");
 
-        let client3 = BackendClient::new("http://192.168.1.100:8080".to_string(), 30).unwrap();
-        assert_eq!(client3.base_url(), "http://192.168.1.100:8080");
+        let client3 = BackendClient::new("https://192.168.1.100:8080".to_string(), 30).unwrap();
+        assert_eq!(client3.base_url(), "https://192.168.1.100:8080");
     }
 
     #[test]
@@ -271,19 +284,42 @@ mod tests {
     // For now, we test that the client can be created with various configurations
     #[test]
     fn test_backend_client_creation_with_edge_cases() {
-        // Empty URL should still create a client (validation happens at request time)
+        // Empty URL should now fail due to URL validation
         let client = BackendClient::new("".to_string(), 30);
-        assert!(client.is_ok());
+        assert!(client.is_err());
 
-        // Very short timeout
+        // Very short timeout with valid localhost URL
         let client = BackendClient::new("http://localhost:11434".to_string(), 1);
         assert!(client.is_ok());
         assert_eq!(client.unwrap().timeout(), Duration::from_secs(1));
 
-        // Very long timeout
+        // Very long timeout with valid localhost URL
         let client = BackendClient::new("http://localhost:11434".to_string(), 3600);
         assert!(client.is_ok());
         assert_eq!(client.unwrap().timeout(), Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn test_backend_client_url_validation() {
+        // Remote HTTP URLs should be rejected
+        let client = BackendClient::new("http://api.example.com".to_string(), 30);
+        assert!(client.is_err());
+        
+        // Remote HTTPS URLs should be accepted
+        let client = BackendClient::new("https://api.example.com".to_string(), 30);
+        assert!(client.is_ok());
+        
+        // Localhost HTTP URLs should be accepted
+        let client = BackendClient::new("http://localhost:11434".to_string(), 30);
+        assert!(client.is_ok());
+        
+        // Localhost HTTPS URLs should be accepted
+        let client = BackendClient::new("https://localhost:11434".to_string(), 30);
+        assert!(client.is_ok());
+        
+        // Invalid format URLs should be rejected
+        let client = BackendClient::new("not-a-url".to_string(), 30);
+        assert!(client.is_err());
     }
 
     #[test]

@@ -30,6 +30,10 @@ impl ExitCodes {
     /// Used for: file not found, permission denied, binary files, file too large
     pub const FILE_ERROR: i32 = 5;
     
+    /// URL validation error - invalid URL format or protocol
+    /// Used for: invalid URL format, HTTP used for remote endpoints
+    pub const URL_VALIDATION_ERROR: i32 = 6;
+    
     /// SIGINT received - user interrupted with Ctrl+C
     /// Standard Unix exit code for SIGINT (128 + 2)
     pub const SIGINT: i32 = 130;
@@ -134,6 +138,14 @@ pub fn categorize_error(error: &anyhow::Error) -> i32 {
         return ExitCodes::MODEL_UNAVAILABLE;
     }
     
+    // Check for URL validation errors
+    if error_str.contains("invalid backend url protocol")
+        || error_str.contains("invalid url format")
+        || error_str.contains("backend url cannot be empty")
+        || error_str.contains("https protocol for remote endpoints") {
+        return ExitCodes::URL_VALIDATION_ERROR;
+    }
+    
     // Check for argument validation errors
     if error_str.contains("prompt cannot be empty")
         || error_str.contains("invalid temperature")
@@ -214,6 +226,7 @@ mod tests {
                 ExitCodes::AUTH_FAILED,
                 ExitCodes::MODEL_UNAVAILABLE,
                 ExitCodes::FILE_ERROR,
+                ExitCodes::URL_VALIDATION_ERROR,
             ];
             
             if !valid_codes.contains(&exit_code) {
@@ -283,6 +296,7 @@ mod tests {
         assert_eq!(ExitCodes::AUTH_FAILED, 3);
         assert_eq!(ExitCodes::MODEL_UNAVAILABLE, 4);
         assert_eq!(ExitCodes::FILE_ERROR, 5);
+        assert_eq!(ExitCodes::URL_VALIDATION_ERROR, 6);
         assert_eq!(ExitCodes::SIGINT, 130);
         assert_eq!(ExitCodes::SIGTERM, 143);
     }
@@ -362,6 +376,21 @@ mod tests {
         
         let error = anyhow!("File too large: 5MB exceeds limit");
         assert_eq!(categorize_error(&error), ExitCodes::FILE_ERROR);
+    }
+
+    #[test]
+    fn test_categorize_url_validation_errors() {
+        let error = anyhow!("Invalid backend URL protocol");
+        assert_eq!(categorize_error(&error), ExitCodes::URL_VALIDATION_ERROR);
+        
+        let error = anyhow!("Invalid URL format: not-a-url");
+        assert_eq!(categorize_error(&error), ExitCodes::URL_VALIDATION_ERROR);
+        
+        let error = anyhow!("Backend URL cannot be empty");
+        assert_eq!(categorize_error(&error), ExitCodes::URL_VALIDATION_ERROR);
+        
+        let error = anyhow!("HTTPS protocol for remote endpoints required");
+        assert_eq!(categorize_error(&error), ExitCodes::URL_VALIDATION_ERROR);
     }
 
     #[test]
@@ -468,6 +497,7 @@ mod tests {
             ExitCodes::AUTH_FAILED,
             ExitCodes::MODEL_UNAVAILABLE,
             ExitCodes::FILE_ERROR,
+            ExitCodes::URL_VALIDATION_ERROR,
             ExitCodes::SIGINT,
             ExitCodes::SIGTERM,
         ];

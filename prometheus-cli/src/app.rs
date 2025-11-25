@@ -947,9 +947,9 @@ mod tests {
     #[tokio::test]
     async fn test_cli_app_with_url_override() {
         let config = AppConfig::default();
-        let custom_url = "http://custom-server:8080".to_string();
+        let custom_url = "https://custom-server:8080".to_string();
         let app = CliApp::new(config, Some(custom_url.clone()), None).unwrap();
-        assert_eq!(app.backend_client.base_url(), "http://custom-server:8080");
+        assert_eq!(app.backend_client.base_url(), "https://custom-server:8080");
     }
 
     #[tokio::test]
@@ -1265,7 +1265,7 @@ theme = "Hacker Green"
     #[tokio::test]
     async fn test_cli_argument_override() {
         let config = AppConfig::default();
-        let cli_url = "http://custom-server:9999".to_string();
+        let cli_url = "https://custom-server:9999".to_string();
         let cli_model = "custom-model".to_string();
 
         let app = CliApp::new(config, Some(cli_url.clone()), Some(cli_model.clone())).unwrap();
@@ -1316,7 +1316,7 @@ window_title = "Test App"
     #[tokio::test]
     async fn test_config_values_without_overrides() {
         let mut config = AppConfig::default();
-        config.backend.ollama_url = "http://config-server:7777".to_string();
+        config.backend.ollama_url = "https://config-server:7777".to_string();
 
         let app = CliApp::new(config.clone(), None, None).unwrap();
 
@@ -1330,9 +1330,9 @@ window_title = "Test App"
     #[tokio::test]
     async fn test_partial_cli_override_url_only() {
         let mut config = AppConfig::default();
-        config.backend.ollama_url = "http://config-server:7777".to_string();
+        config.backend.ollama_url = "https://config-server:7777".to_string();
 
-        let cli_url = "http://cli-server:8888".to_string();
+        let cli_url = "https://cli-server:8888".to_string();
         let app = CliApp::new(config, Some(cli_url.clone()), None).unwrap();
 
         // Verify URL is overridden but model uses default
@@ -1345,7 +1345,7 @@ window_title = "Test App"
     #[tokio::test]
     async fn test_partial_cli_override_model_only() {
         let mut config = AppConfig::default();
-        config.backend.ollama_url = "http://config-server:7777".to_string();
+        config.backend.ollama_url = "https://config-server:7777".to_string();
 
         let cli_model = "cli-model".to_string();
         let app = CliApp::new(config.clone(), None, Some(cli_model.clone())).unwrap();

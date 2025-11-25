@@ -4,13 +4,22 @@ window_width = 900.0
 window_height = 650.0
 
 [backend]
+# For remote servers, use HTTPS (required for security)
+# url = "https://my-ollama-server.com:11434"
+# ollama_url = "https://my-ollama-server.com:11434"
+
+# For local development, HTTP is allowed
 url = "http://localhost:11434"
 ollama_url = "http://localhost:11434"
+
 timeout_seconds = 30
+
+# Example saved URLs (remote URLs must use HTTPS)
 saved_urls = [
     "https://api.openai.com/v1",
     "https://api.anthropic.com/v1",
-    "http://192.168.1.100:8000"
+    "https://my-ollama-server.com:11434",
+    "http://localhost:11434"  # localhost exception
 ]
 
 [ui]

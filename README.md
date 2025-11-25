@@ -84,7 +84,10 @@ sudo cp target/release/prometheus-cli /usr/local/bin/
 # Basic usage
 prometheus-cli
 
-# With custom backend or model
+# With custom backend or model (HTTPS required for remote)
+prometheus-cli --url https://my-ollama-server.com:11434 --model codellama
+
+# Local development (HTTP allowed for localhost)
 prometheus-cli --url http://localhost:11434 --model codellama
 
 # Available commands
@@ -94,6 +97,20 @@ prometheus-cli --url http://localhost:11434 --model codellama
 > /clear       # Clear screen
 > /exit        # Save and quit
 ```
+
+#### Security Requirements
+
+**HTTPS Enforcement:** Remote backend URLs must use HTTPS to ensure your prompts and responses are encrypted in transit.
+
+**Valid URLs:**
+- `https://my-ollama-server.com:11434` (remote HTTPS)
+- `https://api.example.com:8080` (remote HTTPS with custom port)
+- `http://localhost:11434` (localhost development)
+- `http://127.0.0.1:11434` (localhost development)
+
+**Invalid URLs:**
+- `http://remote-server.com:11434` (remote HTTP not allowed)
+- `http://192.168.1.100:11434` (remote HTTP not allowed)
 
 ### Non-Interactive Mode
 
@@ -126,26 +143,31 @@ prometheus-cli --system "You are a Python expert" "How do I parse JSON?"
 ### Advanced Examples
 
 ```bash
-# Code review workflow
-prometheus-cli --file src/main.rs --system "You are a senior developer" \
+# Code review workflow with secure remote server
+prometheus-cli --url https://my-ollama-server.com:11434 \
+  --file src/main.rs --system "You are a senior developer" \
   --temperature 0.3 "Review this code for bugs and improvements"
 
 # Data processing pipeline
 cat data.csv | prometheus-cli --quiet --max-tokens 500 \
   "Summarize the key trends in this data" > summary.txt
 
-# Batch processing
+# Batch processing with local development server
 for file in *.py; do
-  prometheus-cli --file "$file" --quiet "Rate this code quality 1-10" >> ratings.txt
+  prometheus-cli --url http://localhost:11434 --file "$file" --quiet \
+    "Rate this code quality 1-10" >> ratings.txt
 done
 
-# Error analysis with context
-tail -100 /var/log/app.log | prometheus-cli --system "You are a DevOps expert" \
-  "What's causing these errors and how to fix them?"
+# Error analysis with context using secure connection
+tail -100 /var/log/app.log | prometheus-cli --url https://api.example.com:8080 \
+  --system "You are a DevOps expert" "What's causing these errors and how to fix them?"
 
 # Command substitution
 commit_msg=$(prometheus-cli --quiet "Generate a git commit message for bug fixes")
 git commit -m "$commit_msg"
+
+# Remote server with custom port (HTTPS required)
+prometheus-cli --url https://ollama.company.com:8443 "Explain quantum computing"
 ```
 
 ## Command-Line Arguments
@@ -153,7 +175,7 @@ git commit -m "$commit_msg"
 | Argument | Short | Description | Example |
 |----------|-------|-------------|---------|
 | `PROMPT` | | Prompt text (enables non-interactive mode) | `"What is Rust?"` |
-| `--url` | `-u` | Ollama backend URL | `-u http://localhost:11434` |
+| `--url` | `-u` | Ollama backend URL (HTTPS required for remote) | `-u https://my-server.com:11434` |
 | `--model` | `-m` | Model name to use | `-m llama2` |
 | `--config` | `-c` | Configuration file path | `-c /path/to/config.toml` |
 | `--file` | | Include file contents (repeatable) | `--file main.rs` |
@@ -192,9 +214,23 @@ window_width = 900.0
 window_height = 650.0
 
 [backend]
-url = "http://localhost:11434"
-ollama_url = "http://localhost:11434"
+# For remote servers, use HTTPS (required for security)
+url = "https://my-ollama-server.com:11434"
+ollama_url = "https://my-ollama-server.com:11434"
+
+# For local development, HTTP is allowed
+# url = "http://localhost:11434"
+# ollama_url = "http://localhost:11434"
+
 timeout_seconds = 30
+
+# Example saved URLs (remote URLs must use HTTPS)
+saved_urls = [
+    "https://api.openai.com/v1",
+    "https://api.anthropic.com/v1",
+    "https://my-ollama-server.com:11434",
+    "http://localhost:11434"  # localhost exception
+]
 
 [ui]
 font_size = 16
@@ -240,6 +276,14 @@ cargo build --release
 1. Check if Ollama is running: `curl http://localhost:11434/api/tags`
 2. Start Ollama: `ollama serve`
 3. Verify URL: `prometheus-cli --url http://localhost:11434`
+
+**Problem:** `Invalid backend URL protocol` or HTTPS-related errors
+
+**Solutions:**
+1. Use HTTPS for remote servers: `prometheus-cli --url https://my-server.com:11434`
+2. For localhost development, HTTP is allowed: `prometheus-cli --url http://localhost:11434`
+3. Check that remote URLs use HTTPS protocol
+4. Verify SSL certificates are valid for HTTPS connections
 
 ### Model Issues
 

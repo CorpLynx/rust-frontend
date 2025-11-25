@@ -24,9 +24,11 @@ Prompt text to process. When provided, enables non-interactive mode where the CL
 .SS General Options
 .TP
 .BR \-u ", " \-\-url " " \fIURL\fR
-Specify the Ollama backend URL. Overrides the URL specified in the configuration file. Supports both local and remote instances.
+Specify the Ollama backend URL. Overrides the URL specified in the configuration file. Remote URLs must use HTTPS for security. Local development URLs (localhost, 127.0.0.1) may use HTTP.
 .br
-Example: \fB\-u http://localhost:11434\fR, \fB\-u http://192.168.1.100:11434\fR
+Valid examples: \fB\-u https://my-ollama-server.com:11434\fR, \fB\-u http://localhost:11434\fR
+.br
+Invalid examples: \fB\-u http://remote-server.com:11434\fR (remote HTTP not allowed)
 .TP
 .BR \-m ", " \-\-model " " \fIMODEL\fR
 Specify the model name to use for chat. Overrides the model specified in the configuration file. Use 'ollama list' to see available models.
@@ -169,8 +171,20 @@ The configuration file uses TOML format:
 .nf
 .RS
 [backend]
-ollama_url = "http://localhost:11434"
+# For remote servers, use HTTPS (required for security)
+ollama_url = "https://my-ollama-server.com:11434"
+
+# For local development, HTTP is allowed
+# ollama_url = "http://localhost:11434"
+
 timeout_seconds = 30
+
+# Example saved URLs (remote URLs must use HTTPS)
+saved_urls = [
+    "https://api.openai.com/v1",
+    "https://my-ollama-server.com:11434",
+    "http://localhost:11434"  # localhost exception
+]
 
 [app]
 window_title = "Prometheus v0.2.0"
@@ -179,7 +193,11 @@ window_title = "Prometheus v0.2.0"
 .SS Backend Settings
 .TP
 .B backend.ollama_url
-The URL of the Ollama backend server. Default: \fBhttp://localhost:11434\fR
+The URL of the Ollama backend server. Remote URLs must use HTTPS for security. Local development URLs (localhost, 127.0.0.1) may use HTTP. Default: \fBhttp://localhost:11434\fR
+.br
+Valid examples: \fBhttps://my-ollama-server.com:11434\fR, \fBhttp://localhost:11434\fR
+.br
+Invalid examples: \fBhttp://remote-server.com:11434\fR (remote HTTP not allowed)
 .TP
 .B backend.timeout_seconds
 Request timeout in seconds. Default: \fB30\fR
@@ -254,8 +272,11 @@ If advanced rendering fails, raw markdown is displayed in readable format.
 Start with default configuration:
 .B prometheus-cli
 .TP
-Connect to remote Ollama server:
-.B prometheus-cli \-u http://192.168.1.100:11434
+Connect to secure remote Ollama server:
+.B prometheus-cli \-u https://my-ollama-server.com:11434
+.TP
+Connect to local development server:
+.B prometheus-cli \-u http://localhost:11434
 .TP
 Use specific model:
 .B prometheus-cli \-m codellama
@@ -279,8 +300,8 @@ Use with pipes:
 JSON output for scripts:
 .B prometheus-cli \-\-json \-\-quiet "Generate a UUID"
 .TP
-Custom model and parameters:
-.B prometheus-cli \-\-model codellama \-\-temperature 0.3 "Write a Python function"
+Custom model and parameters with secure connection:
+.B prometheus-cli \-\-url https://api.example.com:8080 \-\-model codellama \-\-temperature 0.3 "Write a Python function"
 .TP
 Multiple files with system prompt:
 .B prometheus-cli \-\-file src/main.rs \-\-file src/lib.rs \-\-system "You are a code reviewer" "Find potential issues"
@@ -350,6 +371,16 @@ Configuration file could not be loaded. CLI will use default values. Check file 
 .TP
 .B "Invalid parameters: <details>"
 Command-line arguments are invalid. Check temperature range (0.0-2.0) and max-tokens (positive integer).
+.SS URL Validation Errors
+.TP
+.B "Invalid backend URL protocol"
+Remote URL uses HTTP instead of required HTTPS. Use HTTPS for remote servers or localhost for development.
+.TP
+.B "Remote URLs must use HTTPS for security"
+Attempted to use HTTP with a remote server. Change to HTTPS or use localhost for development.
+.TP
+.B "URL validation failed: <details>"
+URL format is invalid or contains unsupported elements. Check URL syntax and protocol.
 .SS File Errors
 .TP
 .B "File not found: <path>"
@@ -388,6 +419,16 @@ Approximately 10-15MB (statically linked).
 .B Streaming latency
 Near real-time, dependent on backend response time.
 .SH SECURITY CONSIDERATIONS
+.SS HTTPS Enforcement
+.IP \(bu 2
+Remote backend URLs must use HTTPS to encrypt prompts and responses in transit.
+.IP \(bu 2
+Local development URLs (localhost, 127.0.0.1) may use HTTP for convenience.
+.IP \(bu 2
+Invalid HTTP remote URLs are rejected with clear error messages.
+.IP \(bu 2
+Configuration files are validated to ensure only secure URLs are saved.
+.SS General Security
 .IP \(bu 2
 Conversation files are created with user-only read/write permissions (0600).
 .IP \(bu 2

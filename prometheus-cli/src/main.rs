@@ -16,6 +16,7 @@ mod output;
 mod streaming;
 mod terminal;
 mod update;
+mod url_validator;
 
 use app::CliApp;
 use config::AppConfig;
@@ -23,16 +24,22 @@ use exit_codes::{ExitCodes, exit_with_error};
 use input::InputProcessor;
 use mode::{ExecutionMode, ModeDetector};
 use non_interactive::NonInteractiveHandler;
+use url_validator::UrlValidator;
 
 /// Prometheus CLI - Terminal-based AI chat interface
 /// 
 /// USAGE:
 ///     prometheus-cli [OPTIONS] [PROMPT]
 /// 
+/// SECURITY:
+///     Remote backend URLs must use HTTPS for encrypted communication.
+///     Localhost URLs (localhost, 127.0.0.1) may use HTTP for development.
+/// 
 /// MODES:
 ///     Interactive Mode (default):
 ///         prometheus-cli
 ///         prometheus-cli --model llama2
+///         prometheus-cli --url https://my-server.com:11434
 /// 
 ///     Non-Interactive Mode:
 ///         prometheus-cli "What is Rust?"
@@ -42,6 +49,12 @@ use non_interactive::NonInteractiveHandler;
 /// EXAMPLES:
 ///     # Start interactive chat
 ///     prometheus-cli
+/// 
+///     # Connect to secure remote server
+///     prometheus-cli --url https://my-ollama-server.com:11434
+/// 
+///     # Local development (HTTP allowed)
+///     prometheus-cli --url http://localhost:11434
 /// 
 ///     # Quick question
 ///     prometheus-cli "What is the capital of France?"
@@ -55,8 +68,8 @@ use non_interactive::NonInteractiveHandler;
 ///     # JSON output for scripts
 ///     prometheus-cli --json --quiet "Generate a UUID"
 /// 
-///     # Custom model and parameters
-///     prometheus-cli --model codellama --temperature 0.3 "Write a Python function"
+///     # Custom model and parameters with secure connection
+///     prometheus-cli --url https://api.example.com:8080 --model codellama --temperature 0.3 "Write a Python function"
 /// 
 ///     # Multiple files with system prompt
 ///     prometheus-cli --file src/main.rs --file src/lib.rs --system "You are a code reviewer" "Find potential issues"
@@ -74,9 +87,21 @@ struct Args {
 
     /// Ollama backend URL (overrides config file)
     /// 
-    /// Specify the URL of the Ollama server. Supports both local and remote instances.
-    /// Examples: http://localhost:11434, http://192.168.1.100:11434
-    #[arg(short, long, value_name = "URL", help = "Ollama backend URL")]
+    /// Specify the URL of the Ollama server. Remote URLs must use HTTPS for security.
+    /// Local development URLs (localhost, 127.0.0.1) may use HTTP.
+    /// 
+    /// SECURITY: Remote connections require HTTPS to encrypt your prompts and responses.
+    /// 
+    /// Valid examples:
+    ///   - https://my-ollama-server.com:11434 (remote HTTPS)
+    ///   - https://api.example.com:8080 (remote HTTPS with custom port)
+    ///   - http://localhost:11434 (localhost development)
+    ///   - http://127.0.0.1:11434 (localhost development)
+    /// 
+    /// Invalid examples:
+    ///   - http://remote-server.com:11434 (remote HTTP not allowed)
+    ///   - http://192.168.1.100:11434 (remote HTTP not allowed)
+    #[arg(short, long, value_name = "URL", help = "Ollama backend URL (HTTPS required for remote)")]
     url: Option<String>,
 
     /// Model name to use for chat (overrides config file)
@@ -174,6 +199,13 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Validate URL if provided via CLI argument (Requirements 4.1, 4.2)
+    if let Some(ref url) = args.url {
+        if let Err(e) = UrlValidator::validate_backend_url(url) {
+            exit_with_error(ExitCodes::URL_VALIDATION_ERROR, &e.to_string());
+        }
+    }
+
     // Detect execution mode based on arguments and stdin
     let mode = match ModeDetector::detect_mode(
         args.prompt.as_deref(),
@@ -189,7 +221,7 @@ async fn main() -> Result<()> {
         }
     };
 
-    match mode {
+    let result = match mode {
         ExecutionMode::Interactive => {
             // Run interactive mode (existing behavior)
             run_interactive_mode(config, args).await
@@ -198,11 +230,27 @@ async fn main() -> Result<()> {
             // Run non-interactive mode
             run_non_interactive_mode(config, args, prompt, options).await
         }
+    };
+
+    // Handle any errors that occurred during execution
+    if let Err(e) = result {
+        let exit_code = exit_codes::categorize_error(&e);
+        exit_with_error(exit_code, &format!("Execution failed: {}", e));
     }
+
+    Ok(())
 }
 
 /// Run the CLI in interactive mode (existing behavior)
 async fn run_interactive_mode(config: AppConfig, args: Args) -> Result<()> {
+    // Validate URL from config if no CLI URL provided (Requirements 4.4)
+    let url_to_use = args.url.as_ref().or(Some(&config.backend.url));
+    if let Some(url) = url_to_use {
+        if let Err(e) = UrlValidator::validate_backend_url(url) {
+            exit_with_error(ExitCodes::URL_VALIDATION_ERROR, &e.to_string());
+        }
+    }
+
     // Create and run CLI app with CLI argument overrides
     // If no model is specified, prompt for interactive selection
     let mut app = CliApp::new_with_model_selection(config, args.url, args.model)
@@ -248,6 +296,14 @@ async fn run_non_interactive_mode(
     // Determine the model to use
     let model = args.model.unwrap_or_else(|| "llama2".to_string());
 
+    // Validate URL from config if no CLI URL provided (Requirements 4.4)
+    let url_to_use = args.url.as_ref().or(Some(&config.backend.url));
+    if let Some(url) = url_to_use {
+        if let Err(e) = UrlValidator::validate_backend_url(url) {
+            exit_with_error(ExitCodes::URL_VALIDATION_ERROR, &e.to_string());
+        }
+    }
+
     // Create non-interactive handler
     let mut handler = match NonInteractiveHandler::new(
         &config,
@@ -257,7 +313,9 @@ async fn run_non_interactive_mode(
     ) {
         Ok(handler) => handler,
         Err(e) => {
-            exit_with_error(ExitCodes::BACKEND_UNREACHABLE, &format!("Failed to initialize backend: {}", e));
+            // Use categorized error handling for proper exit codes
+            let exit_code = exit_codes::categorize_error(&e);
+            exit_with_error(exit_code, &format!("Failed to initialize backend: {}", e));
         }
     };
 
