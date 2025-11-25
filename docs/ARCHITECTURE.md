@@ -1,422 +1,291 @@
-# Architecture Overview
+# Prometheus CLI Architecture
 
-## System Architecture
+## Overview
+
+Prometheus CLI is a terminal-based AI chat application built in Rust. It provides both interactive and non-interactive modes for communicating with Ollama AI models.
+
+## High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Prometheus                            │
-│                         (Iced GUI)                           │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              │ HTTP POST
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Backend API Server                      │
-│                  (http://localhost:8000)                     │
-└─────────────────────────────────────────────────────────────┘
+│                     Prometheus CLI                           │
+│                                                              │
+│  ┌──────────────┐         ┌──────────────┐                 │
+│  │ Interactive  │         │    Non-      │                 │
+│  │    Mode      │         │ Interactive  │                 │
+│  │   (REPL)     │         │    Mode      │                 │
+│  └──────┬───────┘         └──────┬───────┘                 │
+│         │                        │                          │
+│         └────────┬───────────────┘                          │
+│                  │                                          │
+│         ┌────────▼────────┐                                │
+│         │  Backend Client │                                │
+│         └────────┬────────┘                                │
+└──────────────────┼─────────────────────────────────────────┘
+                   │
+                   │ HTTPS (remote) / HTTP (localhost)
+                   ▼
+         ┌─────────────────┐
+         │  Ollama Server  │
+         │  (AI Backend)   │
+         └─────────────────┘
 ```
 
-## Application Flow
+## Module Organization
 
-```
-┌──────────────┐
-│   main.rs    │  Entry Point
-└──────┬───────┘
-       │
-       │ 1. Initialize logger
-       │ 2. Create logs directory
-       │ 3. Load config.toml
-       │
-       ▼
-┌──────────────┐
-│  config.rs   │  Configuration
-└──────┬───────┘
-       │
-       │ Load settings:
-       │ - Window size
-       │ - Backend URL
-       │ - UI preferences
-       │
-       ▼
-┌──────────────┐
-│   app.rs     │  Main Application
-└──────┬───────┘
-       │
-       │ Initialize:
-       │ - ChatApp state
-       │ - Load chat history
-       │ - Setup GUI
-       │
-       ▼
-┌──────────────────────────────────────────────────────────┐
-│                    Application Loop                       │
-│                                                           │
-│  ┌─────────────┐    ┌──────────────┐    ┌────────────┐ │
-│  │   User      │───▶│   Message    │───▶│   Update   │ │
-│  │   Input     │    │   Handler    │    │   State    │ │
-│  └─────────────┘    └──────────────┘    └────────────┘ │
-│         │                                       │        │
-│         │                                       │        │
-│         ▼                                       ▼        │
-│  ┌─────────────┐                        ┌────────────┐ │
-│  │    View     │◀───────────────────────│   Render   │ │
-│  │   (GUI)     │                        │    GUI     │ │
-│  └─────────────┘                        └────────────┘ │
-└──────────────────────────────────────────────────────────┘
-```
+The application is organized into focused modules, each handling a specific concern:
 
-## Component Breakdown
+### Core Modules
 
-### 1. main.rs
-**Responsibilities:**
-- Application initialization
-- Logger setup
-- Configuration loading
-- Window settings
-- Launch Iced application
+1. **main.rs** - Entry point and mode routing
+2. **app.rs** - Interactive mode application logic
+3. **backend.rs** - HTTP communication with Ollama
+4. **config.rs** - Configuration management
 
-**Key Functions:**
-```rust
-fn main() -> Result<()>
-```
+### Input/Output Modules
 
-### 2. config.rs
-**Responsibilities:**
-- Load configuration from `config.toml`
-- Provide default values
-- Manage settings structures
+5. **input.rs** - Input processing and validation
+6. **output.rs** - Output formatting
+7. **streaming.rs** - Streaming response handling
+8. **markdown_renderer.rs** - Terminal markdown rendering
 
-**Key Structures:**
-```rust
-struct AppConfig {
-    app: AppSettings,
-    backend: BackendSettings,
-    ui: UISettings,
-}
-```
+### Mode & Command Modules
 
-### 3. app.rs
-**Responsibilities:**
-- Main application logic
-- GUI rendering
-- Message handling
-- Backend communication
-- History management
+9. **mode.rs** - Execution mode detection
+10. **non_interactive.rs** - Non-interactive mode handler
+11. **commands.rs** - Interactive command parsing
 
-**Key Structures:**
-```rust
-struct ChatApp {
-    config: AppConfig,
-    prompt_input: String,
-    chat_history: Vec<ChatMessage>,
-    is_loading: bool,
-    error_message: Option<String>,
-    dark_mode: bool,
-    scroll_id: scrollable::Id,
-}
+### Data & State Modules
 
-enum Message {
-    PromptChanged(String),
-    SendPrompt,
-    ResponseReceived(Result<String, String>),
-    HistoryLoaded(Result<Vec<ChatMessage>, String>),
-    ClearChat,
-    ToggleDarkMode,
-    CopyMessage(usize),
-}
-```
+12. **conversation.rs** - Conversation persistence
+13. **terminal.rs** - Terminal state management
 
-## Message Flow
+### Utility Modules
 
-### Sending a Message
-
-```
-User types message
-       │
-       ▼
-PromptChanged(String)
-       │
-       ▼
-User presses Enter/Send
-       │
-       ▼
-SendPrompt
-       │
-       ├─▶ Add to chat_history
-       ├─▶ Save to chat_history.json
-       ├─▶ Clear input field
-       ├─▶ Set is_loading = true
-       └─▶ Send HTTP request
-              │
-              ▼
-       Backend processes
-              │
-              ▼
-ResponseReceived(Result)
-       │
-       ├─▶ Set is_loading = false
-       ├─▶ Add response to chat_history
-       ├─▶ Save to chat_history.json
-       └─▶ Auto-scroll to bottom
-```
-
-### Feature Flows
-
-#### Dark Mode Toggle
-```
-User clicks 🌙/☀️
-       │
-       ▼
-ToggleDarkMode
-       │
-       ▼
-dark_mode = !dark_mode
-       │
-       ▼
-Re-render with new theme
-```
-
-#### Copy Message
-```
-User clicks 📋
-       │
-       ▼
-CopyMessage(index)
-       │
-       ▼
-Get message from chat_history[index]
-       │
-       ▼
-Copy to clipboard via arboard
-```
-
-#### Clear Chat
-```
-User clicks Clear Chat
-       │
-       ▼
-ClearChat
-       │
-       ├─▶ Clear chat_history vector
-       ├─▶ Clear chat_history.json
-       └─▶ Clear error_message
-```
+14. **url_validator.rs** - URL validation and security
+15. **exit_codes.rs** - Exit code definitions
+16. **error.rs** - Error types and handling
+17. **update.rs** - Self-update functionality
 
 ## Data Flow
 
-### Persistence Layer
+### Interactive Mode Flow
 
 ```
-┌─────────────────┐
-│   ChatApp       │
-│   (Memory)      │
-└────────┬────────┘
-         │
-         │ save_history()
-         ▼
-┌─────────────────┐
-│ chat_history    │
-│    .json        │
-│   (Disk)        │
-└────────┬────────┘
-         │
-         │ load_history()
-         ▼
-┌─────────────────┐
-│   ChatApp       │
-│   (Memory)      │
-└─────────────────┘
-```
-
-### Backend Communication
-
-```
-┌─────────────────┐
-│   ChatApp       │
-└────────┬────────┘
-         │
-         │ send_request()
-         ▼
-┌─────────────────┐
-│   Reqwest       │
-│   HTTP Client   │
-└────────┬────────┘
-         │
-         │ POST /generate
-         ▼
-┌─────────────────┐
-│   Backend API   │
-└────────┬────────┘
-         │
-         │ JSON Response
-         ▼
-┌─────────────────┐
-│   Parse JSON    │
-└────────┬────────┘
-         │
-         │ ResponseReceived
-         ▼
-┌─────────────────┐
-│   ChatApp       │
-└─────────────────┘
-```
-
-## GUI Structure
-
-```
-Container (Root)
-│
-└─▶ Column (Main Layout)
+User Input
     │
-    ├─▶ Row (Header)
-    │   ├─▶ Text ("Prometheus")
-    │   ├─▶ Button (🌙/☀️ Dark Mode Toggle)
-    │   └─▶ Button ("Clear Chat")
+    ▼
+┌─────────────────┐
+│  Terminal       │ Read line from stdin
+│  (crossterm)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Command Parser │ Check if it's a command (/help, /exit, etc.)
+└────────┬────────┘
+         │
+         ├─▶ Command? ──▶ Execute command
+         │
+         └─▶ Prompt? ──▶ Send to backend
+                            │
+                            ▼
+                    ┌──────────────┐
+                    │ Backend      │ HTTP POST to Ollama
+                    │ Client       │
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ Streaming    │ Process chunks as they arrive
+                    │ Handler      │
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ Markdown     │ Render formatted output
+                    │ Renderer     │
+                    └──────┬───────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │ Conversation │ Save to disk
+                    │ Manager      │
+                    └──────────────┘
+```
+
+### Non-Interactive Mode Flow
+
+```
+CLI Arguments + stdin
     │
-    ├─▶ Container (Error Display)
-    │   └─▶ Text (error message if any)
+    ▼
+┌─────────────────┐
+│  Mode Detector  │ Detect non-interactive mode
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Input          │ Combine prompt + files + stdin
+│  Processor      │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Validation     │ Validate parameters
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Backend        │ Send single request
+│  Client         │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Output         │ Format based on flags (--quiet, --json)
+│  Formatter      │
+└────────┬────────┘
+         │
+         ▼
+    Exit with code
+```
+
+## Key Design Patterns
+
+### 1. Mode Detection Pattern
+
+The application automatically detects whether to run in interactive or non-interactive mode based on:
+- Presence of prompt argument
+- stdin availability
+- Output flags (--quiet, --json, etc.)
+
+This allows seamless use in both human interaction and scripting contexts.
+
+### 2. Streaming Response Pattern
+
+Responses from the AI are streamed chunk-by-chunk rather than waiting for completion:
+- Lower perceived latency
+- Better user experience
+- Ability to interrupt long responses
+
+### 3. Configuration Precedence Pattern
+
+Settings are resolved in order of precedence:
+1. CLI arguments (highest priority)
+2. Config file values
+3. Built-in defaults (lowest priority)
+
+This provides flexibility while maintaining sensible defaults.
+
+### 4. Security-First URL Validation
+
+All backend URLs are validated before use:
+- Remote URLs must use HTTPS
+- Localhost URLs can use HTTP (development)
+- Invalid URLs are rejected with helpful error messages
+
+### 5. Conversation Persistence Pattern
+
+Conversations are automatically saved:
+- Each conversation has a unique ID
+- Messages are appended incrementally
+- Metadata is maintained separately for fast listing
+
+## Error Handling Strategy
+
+The application uses a layered error handling approach:
+
+```
+Application Layer
     │
-    ├─▶ Scrollable (Chat History)
-    │   └─▶ Column (Messages)
-    │       └─▶ For each message:
-    │           └─▶ Container (Message Box)
-    │               └─▶ Column
-    │                   ├─▶ Row (Header)
-    │                   │   ├─▶ Text (Role: "You:" or "AI:")
-    │                   │   ├─▶ Text (Timestamp)
-    │                   │   └─▶ Button (📋 Copy)
-    │                   └─▶ Text (Message Content)
+    ├─▶ User-friendly messages (stderr)
     │
-    └─▶ Row (Input Area)
-        ├─▶ TextInput (Prompt Input)
-        └─▶ Button ("Send" / "Sending...")
+    ▼
+Error Categorization Layer
+    │
+    ├─▶ Exit codes (for scripts)
+    │
+    ▼
+Error Source Layer
+    │
+    ├─▶ Backend errors
+    ├─▶ File system errors
+    ├─▶ Validation errors
+    └─▶ Network errors
 ```
 
-## State Management
-
-### Application State
-
-```rust
-ChatApp {
-    config: AppConfig,           // Loaded from config.toml
-    prompt_input: String,         // Current input text
-    chat_history: Vec<ChatMessage>, // All messages
-    is_loading: bool,             // Request in progress?
-    error_message: Option<String>, // Current error
-    dark_mode: bool,              // Theme preference
-    scroll_id: scrollable::Id,    // For auto-scroll
-}
-```
-
-### Message State
-
-```rust
-ChatMessage {
-    role: String,      // "user" or "assistant"
-    content: String,   // Message text
-    timestamp: String, // HH:MM:SS format
-}
-```
-
-## Async Operations
-
-### HTTP Request Flow
-
-```
-Main Thread (GUI)
-       │
-       │ Command::perform()
-       ▼
-Tokio Runtime (Async)
-       │
-       ├─▶ Create HTTP client
-       ├─▶ Build request
-       ├─▶ Send POST request
-       ├─▶ Wait for response
-       ├─▶ Parse JSON
-       └─▶ Return Result
-              │
-              ▼
-Main Thread (GUI)
-       │
-       ▼
-ResponseReceived(Result)
-       │
-       ▼
-Update UI
-```
-
-## Error Handling
-
-```
-Error Occurs
-       │
-       ├─▶ Log to console (log crate)
-       ├─▶ Write to logs/error.log
-       ├─▶ Set error_message in state
-       └─▶ Display in GUI (red text)
-```
-
-## Dependencies Graph
-
-```
-prometheus
-├── iced (GUI framework)
-│   ├── tokio (async runtime)
-│   └── wgpu (graphics)
-├── reqwest (HTTP client)
-│   └── tokio (async runtime)
-├── serde + serde_json (serialization)
-├── config (config file loading)
-├── chrono (timestamps)
-├── log + env_logger (logging)
-├── arboard (clipboard)
-└── anyhow (error handling)
-```
+Each error type maps to a specific exit code, making the CLI script-friendly.
 
 ## Performance Considerations
 
-### Optimizations
-1. **Async HTTP** - Non-blocking requests using Tokio
-2. **Efficient Rendering** - Iced's retained mode GUI
-3. **History Limits** - Configurable max_chat_history
-4. **Lazy Loading** - Messages rendered on-demand
-5. **Fast Clipboard** - Non-blocking arboard operations
+### Async I/O
+- All network operations use Tokio async runtime
+- Non-blocking HTTP requests
+- Concurrent file operations where possible
 
-### Memory Usage
-- Chat history: ~1KB per message
-- Default limit: 1000 messages = ~1MB
-- GUI state: Minimal overhead
-- Total: < 10MB typical usage
+### Memory Management
+- Streaming responses avoid buffering entire responses
+- Conversation history has configurable limits
+- Efficient string handling with zero-copy where possible
 
-## Security Considerations
+### Startup Time
+- Lazy initialization of components
+- Config loading is fast (TOML parsing)
+- No unnecessary network calls at startup
 
-### Data Storage
-- Chat history stored locally in plain text
-- No encryption (consider adding for sensitive data)
-- Logs may contain error details
+## Security Features
 
-### Network
-- HTTP requests (not HTTPS by default)
-- No authentication (configure in backend)
-- Timeout protection (30s default)
+### HTTPS Enforcement
+- Remote backend URLs must use HTTPS
+- Prevents man-in-the-middle attacks
+- Protects sensitive prompts and responses
 
-### Clipboard
-- Only copies on user action
-- No automatic clipboard access
-- Platform-specific permissions may apply
+### Input Validation
+- All user inputs are validated
+- File paths are checked before reading
+- URL formats are strictly validated
 
-## Future Architecture Improvements
+### Safe Defaults
+- Secure defaults in configuration
+- No automatic execution of commands
+- Clear error messages for security issues
 
-### Planned Enhancements
-1. **Plugin System** - Extensible backend support
-2. **Database** - SQLite for better history management
-3. **Encryption** - Optional chat history encryption
-4. **Streaming** - Server-sent events for real-time responses
-5. **Multi-window** - Multiple conversation windows
-6. **Themes** - Custom theme system
+## Extension Points
 
----
+The architecture is designed to be extensible:
 
-**Last Updated:** Current Session  
-**Version:** 0.2.0
+1. **New Commands** - Add to `commands.rs`
+2. **New Output Formats** - Extend `output.rs`
+3. **New Backends** - Implement in `backend.rs`
+4. **New Validators** - Add to `url_validator.rs`
+
+## Dependencies
+
+### Core Dependencies
+- **tokio** - Async runtime
+- **reqwest** - HTTP client
+- **serde/serde_json** - Serialization
+- **anyhow** - Error handling
+
+### CLI Dependencies
+- **clap** - Argument parsing
+- **crossterm** - Terminal control
+- **termimad** - Markdown rendering
+
+### Utility Dependencies
+- **chrono** - Timestamps
+- **uuid** - Unique IDs
+- **config** - Config file parsing
+- **url** - URL parsing
+
+## Testing Strategy
+
+The codebase includes multiple testing approaches:
+
+1. **Unit Tests** - Test individual functions
+2. **Property Tests** - Test invariants with QuickCheck
+3. **Integration Tests** - Test end-to-end flows
+4. **Mock Tests** - Test with mock HTTP servers
+
+See individual module documentation for specific test coverage.
