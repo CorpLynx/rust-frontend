@@ -17,6 +17,8 @@ pub enum Command {
     Update,
     /// Check for available updates
     UpdateCheck,
+    /// Start local Ollama instance and switch to it
+    StartLocal,
     /// Unknown command
     Unknown(String),
 }
@@ -72,6 +74,7 @@ impl Command {
             "new" => Command::New,
             "help" => Command::Help,
             "models" => Command::Models,
+            "start-local" => Command::StartLocal,
             _ => Command::Unknown(command.to_string()),
         }
     }
@@ -87,6 +90,7 @@ impl Command {
             Command::Models => "List available models from the backend",
             Command::Update => "Update the CLI to the latest version",
             Command::UpdateCheck => "Check for available updates",
+            Command::StartLocal => "Start local Ollama instance and switch to it",
             Command::Unknown(_) => "Unknown command",
         }
     }
@@ -102,6 +106,7 @@ impl Command {
             Command::Models => "models".to_string(),
             Command::Update => "update".to_string(),
             Command::UpdateCheck => "update --check".to_string(),
+            Command::StartLocal => "start-local".to_string(),
             Command::Unknown(cmd) => cmd.clone(),
         }
     }
@@ -120,6 +125,7 @@ pub fn display_help() -> String {
         Command::Models,
         Command::Update,
         Command::UpdateCheck,
+        Command::StartLocal,
     ];
 
     for cmd in commands {
@@ -316,5 +322,41 @@ mod tests {
         let help = display_help();
         assert!(help.contains("/update"));
         assert!(help.contains("/update --check"));
+    }
+
+    #[test]
+    fn test_parse_start_local_command() {
+        assert_eq!(Command::parse("/start-local"), Command::StartLocal);
+        assert_eq!(Command::parse("start-local"), Command::StartLocal);
+    }
+
+    #[test]
+    fn test_parse_start_local_case_insensitive() {
+        assert_eq!(Command::parse("/START-LOCAL"), Command::StartLocal);
+        assert_eq!(Command::parse("/Start-Local"), Command::StartLocal);
+        assert_eq!(Command::parse("/start-LOCAL"), Command::StartLocal);
+    }
+
+    #[test]
+    fn test_parse_start_local_with_whitespace() {
+        assert_eq!(Command::parse("  /start-local  "), Command::StartLocal);
+        assert_eq!(Command::parse("  start-local  "), Command::StartLocal);
+    }
+
+    #[test]
+    fn test_start_local_command_description() {
+        assert_eq!(Command::StartLocal.description(), "Start local Ollama instance and switch to it");
+    }
+
+    #[test]
+    fn test_start_local_command_name() {
+        assert_eq!(Command::StartLocal.name(), "start-local");
+    }
+
+    #[test]
+    fn test_display_help_includes_start_local() {
+        let help = display_help();
+        assert!(help.contains("/start-local"));
+        assert!(help.contains("Start local Ollama instance"));
     }
 }

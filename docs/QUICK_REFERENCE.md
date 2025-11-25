@@ -26,6 +26,22 @@ Fast lookup for common tasks and module responsibilities.
 
 ## Common Tasks
 
+### Quick Start with Local Ollama
+
+Use the `/start-local` command for the easiest setup:
+
+```bash
+prometheus-cli
+> /start-local
+```
+
+This command will:
+1. Switch to localhost endpoint if needed
+2. Check if Ollama is running
+3. Start Ollama automatically if not running
+4. Show available models
+5. Let you select a model
+
 ### Adding a New Command
 
 1. Add variant to `Command` enum in `commands.rs`
@@ -137,6 +153,7 @@ Fast lookup for common tasks and module responsibilities.
 | Command | Description |
 |---------|-------------|
 | `/help` | Show all commands |
+| `/start-local` | Start local Ollama and switch to it |
 | `/exit` | Save and quit |
 | `/quit` | Alias for /exit |
 | `/new` | Start new conversation |
@@ -332,11 +349,13 @@ prometheus-cli "test" --verbose
 
 | Problem | Solution |
 |---------|----------|
-| Can't connect | Check Ollama is running: `ollama serve` |
+| Can't connect | Use `/start-local` command or check Ollama is running: `ollama serve` |
 | Model not found | Pull model: `ollama pull llama2` |
 | HTTPS error | Use HTTPS for remote, HTTP for localhost |
 | Slow responses | Increase timeout in config.toml |
 | Empty response | Check model is working: `ollama run llama2` |
+| Ollama won't start | Check port 11434 is free: `lsof -i :11434` |
+| No models available | Install a model: `ollama pull llama2` |
 
 ## Useful Links
 

@@ -12,6 +12,7 @@ pub mod input;
 pub mod markdown_renderer;
 pub mod mode;
 pub mod non_interactive;
+pub mod ollama_service;
 pub mod output;
 pub mod streaming;
 pub mod terminal;

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use crate::backend::BackendClient;
 use crate::commands::{Command, display_help};
 use crate::error::{ErrorDisplay, ErrorContext};
+use crate::ollama_service::OllamaServiceManager;
 use crate::streaming::StreamingHandler;
 use crate::terminal::Terminal;
 use crate::config::AppConfig;
@@ -206,6 +207,68 @@ impl CliApp {
     /// Get the model being used by this CLI instance
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Select a model from a list of available models
+    ///
+    /// Displays a numbered list of models and prompts the user to select one.
+    /// Validates input and handles errors with re-prompting.
+    ///
+    /// # Arguments
+    /// * `models` - Vector of available model names
+    ///
+    /// # Returns
+    /// * `Ok(String)` - The selected model name
+    /// * `Err` - If reading input fails
+    ///
+    /// # Requirements
+    /// * 6.1: Display numbered list and prompt for selection
+    /// * 6.2: Switch to selected model on valid input
+    /// * 6.3: Display error and re-prompt on invalid number
+    /// * 6.4: Display error and re-prompt on non-numeric input
+    /// * 6.5: Display confirmation message with selected model
+    async fn select_model_from_list(&mut self, models: Vec<String>) -> Result<String> {
+        // Display available models
+        self.terminal.write("\n")?;
+        self.terminal.write_info("Available models:")?;
+        for (i, model_name) in models.iter().enumerate() {
+            self.terminal.write(&format!("  {}. {}", i + 1, model_name))?;
+        }
+        self.terminal.write("\n")?;
+
+        // Prompt for selection with validation loop
+        let selected_model = loop {
+            self.terminal.write("Select a model (enter number): ")?;
+            
+            match self.terminal.read_line() {
+                Ok(input) => {
+                    let input = input.trim();
+                    
+                    // Try to parse as number
+                    if let Ok(num) = input.parse::<usize>() {
+                        if num > 0 && num <= models.len() {
+                            break models[num - 1].clone();
+                        } else {
+                            self.terminal.write_error(&format!(
+                                "Invalid selection. Please enter a number between 1 and {}",
+                                models.len()
+                            ))?;
+                        }
+                    } else {
+                        self.terminal.write_error("Please enter a valid number")?;
+                    }
+                }
+                Err(e) => {
+                    self.terminal.write_error(&format!("Failed to read input: {}", e))?;
+                    anyhow::bail!("Failed to read model selection");
+                }
+            }
+        };
+
+        self.terminal.write("\n")?;
+        self.terminal.write_info(&format!("Selected model: {}", selected_model))?;
+
+        Ok(selected_model)
     }
 
     /// Display welcome message
@@ -541,6 +604,184 @@ impl CliApp {
         Ok(())
     }
 
+    /// Handle the /start-local command
+    ///
+    /// This method implements the complete workflow for switching to a local Ollama instance:
+    /// 1. Display start message
+    /// 2. Check and switch endpoint if needed
+    /// 3. Check if Ollama is running
+    /// 4. Start Ollama if not running
+    /// 5. Fetch available models
+    /// 6. Prompt user to select a model
+    /// 7. Update app state with selected model
+    /// 8. Display completion summary
+    ///
+    /// # Requirements
+    /// * 1.2: Display message indicating local setup process has started
+    /// * 1.3: Return to prompt after successful completion
+    /// * 1.4: Display error message and return to prompt on error
+    /// * 2.1: Check current backend endpoint URL
+    /// * 2.2: Update backend endpoint to localhost if not already local
+    /// * 2.3: Skip endpoint switching if already local
+    /// * 2.4: Display message confirming switch to local endpoint
+    /// * 2.5: Display message indicating endpoint is already local
+    /// * 3.1: Attempt to connect to Ollama service
+    /// * 3.2: Determine that Ollama is running when connection succeeds
+    /// * 3.5: Display message confirming Ollama is active
+    /// * 4.1: Display message indicating attempt to start Ollama
+    /// * 4.3: Wait for Ollama to become responsive
+    /// * 4.4: Display success message when Ollama becomes responsive
+    /// * 4.5: Display error message with troubleshooting guidance on timeout
+    /// * 5.1: Fetch list of available models from local endpoint
+    /// * 5.2: Display list of model names when models are available
+    /// * 5.3: Display message indicating no models are installed
+    /// * 5.4: Display error message with failure reason on fetch error
+    /// * 5.5: Provide guidance on installing models using `ollama pull`
+    /// * 6.5: Display confirmation message with selected model name
+    /// * 6.6: Provide option to continue with current model
+    /// * 7.1: Display message describing current step
+    /// * 7.2: Display success indicator when step completes
+    /// * 7.3: Display error indicator with specific error
+    /// * 7.4: Provide actionable troubleshooting steps
+    /// * 7.5: Display summary of final state
+    /// * 8.4: Use existing BackendClient for Ollama communication
+    /// * 8.5: Update CliApp instance fields appropriately
+    async fn handle_start_local(&mut self) -> Result<()> {
+        // 1. Display start message (Requirement 1.2, 7.1)
+        self.terminal.write("\n")?;
+        self.terminal.write_info("🚀 Starting local Ollama setup...")?;
+        self.terminal.write("\n")?;
+
+        // 2. Check current backend endpoint (Requirement 2.1)
+        let local_url = "http://localhost:11434";
+        let is_already_local = self.backend_url == local_url;
+
+        // 3. Switch endpoint to localhost if needed (Requirements 2.2, 2.3, 2.4, 2.5, 7.1, 7.2)
+        if !is_already_local {
+            self.terminal.write_info("🔄 Switching to local endpoint...")?;
+            
+            // Update backend URL
+            self.backend_url = local_url.to_string();
+            
+            // Recreate backend client with new URL
+            self.backend_client = BackendClient::new(local_url.to_string(), self.timeout_seconds)
+                .context("Failed to create backend client for local endpoint")?;
+            
+            self.terminal.write_info(&format!("✓ Endpoint set to {}", local_url))?;
+        } else {
+            self.terminal.write_info(&format!("✓ Endpoint is already set to {}", local_url))?;
+        }
+        self.terminal.write("\n")?;
+
+        // 4. Create OllamaServiceManager instance
+        let ollama_manager = OllamaServiceManager::new();
+
+        // 5. Check if Ollama is running (Requirements 3.1, 3.2, 3.5, 7.1)
+        self.terminal.write_info("🔍 Checking Ollama status...")?;
+        let is_running = ollama_manager.is_running().await;
+
+        if is_running {
+            self.terminal.write_info("✓ Ollama is running")?;
+        } else {
+            // 6. Ollama is not running, attempt to start it (Requirements 4.1, 7.1, 7.3, 7.4)
+            self.terminal.write_info("⚠️  Ollama is not running")?;
+            self.terminal.write_info("🚀 Starting Ollama service...")?;
+            
+            match ollama_manager.start_service().await {
+                Ok(_) => {
+                    self.terminal.write_info("✓ Ollama service started")?;
+                    
+                    // 7. Wait for Ollama to become ready (Requirements 4.3, 4.4, 4.5, 7.2, 7.3, 7.4)
+                    self.terminal.write_info("⏳ Waiting for Ollama to become ready...")?;
+                    
+                    match ollama_manager.wait_for_ready(ollama_manager.startup_timeout_secs()).await {
+                        Ok(_) => {
+                            self.terminal.write_info("✓ Ollama is ready")?;
+                        }
+                        Err(e) => {
+                            self.terminal.write("\n")?;
+                            self.terminal.write_error(&format!("❌ Failed to start Ollama: {}", e))?;
+                            self.terminal.write("\n")?;
+                            self.terminal.write_info("🔧 Troubleshooting tips:")?;
+                            self.terminal.write("  • Ensure Ollama is installed correctly")?;
+                            self.terminal.write("  • Check if port 11434 is already in use")?;
+                            self.terminal.write("  • Verify you have permission to start the service")?;
+                            self.terminal.write("  • Try running 'ollama serve' manually to see detailed errors")?;
+                            self.terminal.write("\n")?;
+                            return Ok(());
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.terminal.write("\n")?;
+                    self.terminal.write_error(&format!("❌ Failed to start Ollama: {}", e))?;
+                    self.terminal.write("\n")?;
+                    self.terminal.write_info("🔧 Troubleshooting tips:")?;
+                    self.terminal.write("  • Ensure Ollama is installed: https://ollama.ai/download")?;
+                    self.terminal.write("  • Verify Ollama is in your PATH")?;
+                    self.terminal.write("  • Try running 'ollama --version' to check installation")?;
+                    self.terminal.write("\n")?;
+                    return Ok(());
+                }
+            }
+        }
+        self.terminal.write("\n")?;
+
+        // 8. Fetch available models (Requirements 5.1, 5.2, 5.3, 5.4, 5.5, 7.1, 7.2, 7.3, 7.4)
+        self.terminal.write_info("📦 Fetching available models...")?;
+        
+        let models = match self.backend_client.fetch_models().await {
+            Ok(models) => {
+                if models.is_empty() {
+                    self.terminal.write("\n")?;
+                    self.terminal.write_error("❌ No models are installed")?;
+                    self.terminal.write("\n")?;
+                    self.terminal.write_info("💡 To install a model, run:")?;
+                    self.terminal.write("  ollama pull llama2")?;
+                    self.terminal.write("  ollama pull mistral")?;
+                    self.terminal.write("  ollama pull codellama")?;
+                    self.terminal.write("\n")?;
+                    self.terminal.write_info("For more models, visit: https://ollama.ai/library")?;
+                    self.terminal.write("\n")?;
+                    return Ok(());
+                }
+                models
+            }
+            Err(e) => {
+                self.terminal.write("\n")?;
+                self.terminal.write_error(&format!("❌ Failed to fetch models: {}", e))?;
+                self.terminal.write("\n")?;
+                self.terminal.write_info("🔧 Troubleshooting tips:")?;
+                self.terminal.write("  • Check if Ollama is running: ollama list")?;
+                self.terminal.write("  • Verify network connectivity to localhost:11434")?;
+                self.terminal.write("  • Try restarting Ollama service")?;
+                self.terminal.write("\n")?;
+                return Ok(());
+            }
+        };
+
+        self.terminal.write_info(&format!("✓ Found {} model(s)", models.len()))?;
+        self.terminal.write("\n")?;
+
+        // 9. Prompt user to select a model (Requirements 6.1, 6.2, 6.3, 6.4, 6.5, 6.6)
+        let selected_model = self.select_model_from_list(models).await?;
+
+        // 10. Update app state (Requirements 8.5)
+        self.model = selected_model.clone();
+        self.conversation.model = Some(selected_model.clone());
+
+        // 11. Display completion summary (Requirements 7.5, 7.2)
+        self.terminal.write("\n")?;
+        self.terminal.write_info("🎉 Local setup complete!")?;
+        self.terminal.write(&format!("   Endpoint: {}", self.backend_url))?;
+        self.terminal.write(&format!("   Model: {}", self.model))?;
+        self.terminal.write("\n")?;
+        self.terminal.write_info("You can now start chatting with your local model.")?;
+        self.terminal.write("\n")?;
+
+        Ok(())
+    }
+
     /// Handle a special command
     async fn handle_command(&mut self, input: &str) -> Result<()> {
         let command = Command::parse(input);
@@ -593,6 +834,9 @@ impl CliApp {
             }
             Command::UpdateCheck => {
                 self.handle_update_check().await?;
+            }
+            Command::StartLocal => {
+                self.handle_start_local().await?;
             }
             Command::Unknown(cmd) => {
                 self.terminal.write_error(&format!(

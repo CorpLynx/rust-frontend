@@ -13,6 +13,7 @@ mod input;
 mod markdown_renderer;
 mod mode;
 mod non_interactive;
+mod ollama_service;
 mod output;
 mod streaming;
 mod terminal;

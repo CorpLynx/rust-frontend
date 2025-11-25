@@ -157,6 +157,27 @@ Display a list of available commands with descriptions.
 .TP
 .B /models
 Fetch and display the list of available models from the configured Ollama backend.
+.TP
+.B /start-local
+Automatically switch to local Ollama instance, start the service if needed, and select a model. This command streamlines the process of working with a local Ollama installation by:
+.RS
+.IP \(bu 2
+Switching the backend endpoint to http://localhost:11434 if not already local
+.IP \(bu 2
+Checking if Ollama is running on localhost
+.IP \(bu 2
+Starting Ollama service automatically if it's not running (executes \fBollama serve\fR)
+.IP \(bu 2
+Waiting up to 10 seconds for Ollama to become responsive
+.IP \(bu 2
+Fetching the list of available models from the local instance
+.IP \(bu 2
+Prompting you to select a model from the list
+.IP \(bu 2
+Updating the conversation to use the selected model
+.RE
+.IP
+This is the easiest way to get started with a local Ollama installation. If no models are installed, the command will provide guidance on how to install models using \fBollama pull\fR.
 .SH CONFIGURATION
 .B prometheus-cli
 reads configuration from a TOML file (default: \fBconfig.toml\fR in the current directory). Configuration values can be overridden by command-line arguments.
@@ -277,6 +298,14 @@ If advanced rendering fails, raw markdown is displayed in readable format.
 Start with default configuration:
 .B prometheus-cli
 .TP
+Quick start with local Ollama (easiest way):
+.nf
+.B prometheus-cli
+.B > /start-local
+.fi
+.IP
+This automatically switches to localhost, starts Ollama if needed, and lets you select a model.
+.TP
 Connect to secure remote Ollama server:
 .B prometheus-cli \-u https://my-ollama-server.com:11434
 .TP
@@ -365,7 +394,7 @@ Common error messages and their meanings:
 .SS Connection Errors
 .TP
 .B "Failed to connect to <URL>"
-Cannot reach the Ollama backend. Verify the URL and ensure Ollama is running.
+Cannot reach the Ollama backend. Verify the URL and ensure Ollama is running. Try using the \fB/start-local\fR command to automatically start Ollama.
 .TP
 .B "Request timed out after <N>s"
 Backend did not respond within the configured timeout. Increase timeout_seconds or check backend performance.
@@ -410,6 +439,60 @@ Cannot write conversation file. Check write permissions and disk space in conver
 .TP
 .B "Unknown command: /<CMD>"
 Invalid command entered. Type \fB/help\fR for available commands.
+.SS Ollama Service Errors
+.TP
+.B "Ollama is not installed or not in PATH"
+The \fBollama\fR command is not found. Install Ollama from https://ollama.ai and ensure it's in your PATH.
+.TP
+.B "Failed to start Ollama service"
+The \fBollama serve\fR command was executed but the service did not become responsive within 10 seconds. Check for port conflicts (port 11434), permission issues, or review Ollama logs for errors.
+.TP
+.B "Ollama is running but not responding"
+The Ollama process is running but the API is not responding to health checks. Try restarting Ollama manually: \fBpkill ollama && ollama serve\fR
+.TP
+.B "No models installed"
+Ollama is running but no models are available. Install a model using \fBollama pull llama2\fR or \fBollama pull llama2:7b\fR for a smaller model.
+.TP
+.B "Failed to fetch models"
+Could not retrieve the model list from Ollama. Verify the service is healthy and the API is accessible.
+.SH TROUBLESHOOTING
+.SS Quick Start with Local Ollama
+The easiest way to get started with a local Ollama installation is to use the \fB/start-local\fR command:
+.PP
+.nf
+.RS
+prometheus-cli
+> /start-local
+.RE
+.fi
+.PP
+This command automates the entire setup process including starting Ollama if needed and selecting a model.
+.SS Common Ollama Issues
+.TP
+.B Ollama not installed
+Install Ollama from https://ollama.ai. Verify installation with \fBwhich ollama\fR and \fBollama --version\fR.
+.TP
+.B Port 11434 already in use
+Check what's using the port: \fBlsof -i :11434\fR (macOS/Linux). Kill the conflicting process or configure Ollama to use a different port.
+.TP
+.B Permission denied
+Ensure you have permission to run \fBollama serve\fR. Check file permissions in Ollama's data directory.
+.TP
+.B Service not responding
+Wait 10-15 seconds for Ollama to fully start. Check Ollama logs for errors. Try restarting: \fBpkill ollama && ollama serve\fR.
+.TP
+.B Timeout during startup
+Ollama may be slow to start on first run. Try starting manually first: \fBollama serve\fR, wait for "Ollama is running" message, then use \fB/start-local\fR.
+.TP
+.B No models available
+Install a model: \fBollama pull llama2\fR or \fBollama pull llama2:7b\fR for a smaller model. Verify with \fBollama list\fR.
+.SS Model Selection Issues
+.TP
+.B Invalid model number
+Enter a number between 1 and N where N is the number of available models. The command will re-prompt if you enter an invalid number.
+.TP
+.B Model not found after selection
+The model may have been removed between fetching the list and selection. Run \fB/models\fR to refresh the list.
 .SH PERFORMANCE
 .TP
 .B Startup time

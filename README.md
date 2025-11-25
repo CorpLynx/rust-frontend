@@ -91,11 +91,12 @@ prometheus-cli --url https://my-ollama-server.com:11434 --model codellama
 prometheus-cli --url http://localhost:11434 --model codellama
 
 # Available commands
-> /help        # Show all commands
-> /new         # Start new conversation
-> /models      # List available models
-> /clear       # Clear screen
-> /exit        # Save and quit
+> /help         # Show all commands
+> /start-local  # Start local Ollama and switch to it
+> /new          # Start new conversation
+> /models       # List available models
+> /clear        # Clear screen
+> /exit         # Save and quit
 ```
 
 #### Security Requirements
@@ -268,14 +269,32 @@ cargo build --release
 
 ## Troubleshooting
 
+### Quick Start with Local Ollama
+
+**Easiest way to get started:**
+
+Use the `/start-local` command in interactive mode to automatically set up your local Ollama instance:
+
+```bash
+prometheus-cli
+> /start-local
+```
+
+This command will:
+- Switch your backend to localhost if needed
+- Check if Ollama is running
+- Automatically start Ollama if it's not running
+- Show you available models to select from
+
 ### Connection Issues
 
 **Problem:** `Failed to connect to http://localhost:11434`
 
 **Solutions:**
-1. Check if Ollama is running: `curl http://localhost:11434/api/tags`
-2. Start Ollama: `ollama serve`
-3. Verify URL: `prometheus-cli --url http://localhost:11434`
+1. Use the `/start-local` command to automatically start Ollama
+2. Manually check if Ollama is running: `curl http://localhost:11434/api/tags`
+3. Manually start Ollama: `ollama serve`
+4. Verify URL: `prometheus-cli --url http://localhost:11434`
 
 **Problem:** `Invalid backend URL protocol` or HTTPS-related errors
 
@@ -285,14 +304,55 @@ cargo build --release
 3. Check that remote URLs use HTTPS protocol
 4. Verify SSL certificates are valid for HTTPS connections
 
+### Ollama Service Issues
+
+**Problem:** Ollama won't start or `/start-local` fails
+
+**Solutions:**
+1. **Ollama not installed:**
+   - Install Ollama from https://ollama.ai
+   - Verify installation: `which ollama`
+   - Check version: `ollama --version`
+
+2. **Port already in use:**
+   - Check what's using port 11434: `lsof -i :11434` (macOS/Linux)
+   - Kill the process or use a different port
+   - Restart Ollama: `ollama serve`
+
+3. **Permission issues:**
+   - Ensure you have permission to run `ollama serve`
+   - Check file permissions in Ollama's data directory
+   - Try running with appropriate permissions
+
+4. **Service not responding:**
+   - Wait 10-15 seconds for Ollama to fully start
+   - Check Ollama logs for errors
+   - Restart Ollama manually: `pkill ollama && ollama serve`
+
+5. **Timeout during startup:**
+   - Ollama may be slow to start on first run
+   - Try starting manually first: `ollama serve`
+   - Wait for "Ollama is running" message
+   - Then use `/start-local` in Prometheus CLI
+
 ### Model Issues
 
-**Problem:** `Model 'xyz' not found`
+**Problem:** `Model 'xyz' not found` or no models available
 
 **Solutions:**
 1. List available models: `prometheus-cli` then `/models`
-2. Pull the model: `ollama pull llama2`
-3. Verify model name spelling
+2. Pull a model: `ollama pull llama2`
+3. Pull a smaller model for testing: `ollama pull llama2:7b`
+4. Verify model name spelling
+5. Check available models: `ollama list`
+
+**Problem:** `/start-local` shows no models installed
+
+**Solutions:**
+1. Pull your first model: `ollama pull llama2`
+2. Or pull a smaller model: `ollama pull llama2:7b`
+3. Verify installation: `ollama list`
+4. Run `/start-local` again to see the new models
 
 ### Non-Interactive Mode Issues
 
@@ -309,6 +369,7 @@ cargo build --release
 1. Use smaller models: `prometheus-cli --model llama2:7b`
 2. Increase timeout: Edit `config.toml` and set `timeout_seconds = 60`
 3. Check system resources: `top`
+4. Ensure Ollama has sufficient RAM (8GB+ recommended for larger models)
 
 ## Development
 
