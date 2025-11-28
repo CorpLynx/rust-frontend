@@ -245,7 +245,7 @@ fi
 
 print_header "Installation Complete!"
 echo "🚀 Quick start:"
-echo "   1. Restart your terminal or run: source ~/.$SHELL_NAME"rc""
+echo "   1. Restart your terminal or run: source ~/.${SHELL_NAME}rc"
 echo "   2. Start Ollama: ollama serve"
 echo "   3. Run: prometheus-cli"
 echo ""
@@ -426,7 +426,7 @@ fi
 
 print_header "Installation Complete!"
 echo "🚀 Quick start:"
-echo "   1. Restart your terminal or run: source ~/.$SHELL_NAME"rc""
+echo "   1. Restart your terminal or run: source ~/.${SHELL_NAME}rc"
 echo "   2. Start Ollama: ollama serve"
 echo "   3. Run: prometheus-cli"
 echo ""
