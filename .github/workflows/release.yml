@@ -104,7 +104,7 @@ jobs:
           cp config.toml dist/linux/
 
           # Create installer script from template with version substitution
-          sed "s/__VERSION__/${{ needs.create-release.outputs.version }}/g" \
+          sed "s|__VERSION__|${{ needs.create-release.outputs.version }}|g" \
             scripts/installers/linux-installer-template.sh > dist/prometheus-linux-installer.sh
 
           # Append tarball to installer
@@ -152,7 +152,7 @@ jobs:
           cp config.toml dist/macos/
 
           # Create installer script from template with version substitution
-          sed "s/__VERSION__/${{ needs.create-release.outputs.version }}/g" \
+          sed "s|__VERSION__|${{ needs.create-release.outputs.version }}|g" \
             scripts/installers/macos-installer-template.sh > dist/prometheus-macos-installer.sh
 
           # Append tarball to installer
