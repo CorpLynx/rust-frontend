@@ -103,7 +103,6 @@ jobs:
         run: |
           mkdir -p dist/linux
           cp target/release/prometheus-cli dist/linux/
-          cp install-linux.sh dist/linux/
           cp -r docs dist/linux/
           cp README.md dist/linux/
           cp config.toml dist/linux/
@@ -302,7 +301,6 @@ INSTALLER_EOF
         run: |
           mkdir -p dist/macos
           cp target/release/prometheus-cli dist/macos/
-          cp install-mac.sh dist/macos/
           cp -r docs dist/macos/
           cp README.md dist/macos/
           cp config.toml dist/macos/
