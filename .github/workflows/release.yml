@@ -34,6 +34,8 @@ jobs:
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_PAT }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Prometheus ${{ steps.get_version.outputs.version }}
