@@ -42,6 +42,21 @@ This command will:
 4. Show available models
 5. Let you select a model
 
+### Switching Between Endpoints
+
+Use `/switch` to change between different Ollama instances:
+
+```bash
+# Switch to local
+> /switch local
+
+# Switch to remote via Tailscale
+> /switch https://comp-b.ts.net:11434
+
+# Switch to saved endpoint
+> /switch my-server
+```
+
 ### Adding a New Command
 
 1. Add variant to `Command` enum in `commands.rs`
@@ -154,6 +169,9 @@ This command will:
 |---------|-------------|
 | `/help` | Show all commands |
 | `/start-local` | Start local Ollama and switch to it |
+| `/switch local` | Same as /start-local |
+| `/switch <url>` | Switch to a specific endpoint URL |
+| `/switch <name>` | Switch to a saved endpoint from config |
 | `/exit` | Save and quit |
 | `/quit` | Alias for /exit |
 | `/new` | Start new conversation |

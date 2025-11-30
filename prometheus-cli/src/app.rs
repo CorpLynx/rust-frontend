@@ -782,6 +782,111 @@ impl CliApp {
         Ok(())
     }
 
+    /// Handle the /switch command to change endpoints
+    ///
+    /// Supports three modes:
+    /// - `/switch local` - Switch to localhost and start Ollama (same as /start-local)
+    /// - `/switch <url>` - Switch to a specific URL
+    /// - `/switch <name>` - Switch to a saved endpoint from config
+    async fn handle_switch(&mut self, target: &str) -> Result<()> {
+        self.terminal.write("\n")?;
+
+        // Handle "local" as a special case - delegate to start-local
+        if target.to_lowercase() == "local" {
+            return self.handle_start_local().await;
+        }
+
+        // Try to resolve the target as a URL or saved endpoint name
+        let resolved_url = if target.starts_with("http://") || target.starts_with("https://") {
+            // It's a direct URL
+            target.to_string()
+        } else {
+            // Try to find it in saved URLs
+            let saved_urls = &self.config.backend.saved_urls;
+            let matching_url = saved_urls.iter()
+                .find(|url| {
+                    // Match by hostname or full URL
+                    url.contains(target) || url == &target
+                });
+
+            match matching_url {
+                Some(url) => url.clone(),
+                None => {
+                    self.terminal.write_error(&format!("❌ Could not find endpoint: {}", target))?;
+                    self.terminal.write("\n")?;
+                    self.terminal.write_info("💡 Available options:")?;
+                    self.terminal.write("  • /switch local - Switch to local Ollama")?;
+                    self.terminal.write("  • /switch <url> - Switch to a specific URL")?;
+                    
+                    if !saved_urls.is_empty() {
+                        self.terminal.write("\n  Saved endpoints:")?;
+                        for url in saved_urls {
+                            self.terminal.write(&format!("    - {}", url))?;
+                        }
+                    }
+                    self.terminal.write("\n")?;
+                    return Ok(());
+                }
+            }
+        };
+
+        // Validate the URL
+        if let Err(e) = crate::url_validator::UrlValidator::validate_backend_url(&resolved_url) {
+            self.terminal.write_error(&format!("❌ Invalid URL: {}", e))?;
+            self.terminal.write("\n")?;
+            return Ok(());
+        }
+
+        // Check if we're already on this endpoint
+        if self.backend_url == resolved_url {
+            self.terminal.write_info(&format!("✓ Already connected to {}", resolved_url))?;
+            self.terminal.write("\n")?;
+            return Ok(());
+        }
+
+        // Switch to the new endpoint
+        self.terminal.write_info(&format!("🔄 Switching to {}...", resolved_url))?;
+        
+        self.backend_url = resolved_url.clone();
+        self.backend_client = BackendClient::new(resolved_url.clone(), self.timeout_seconds)
+            .context("Failed to create backend client for new endpoint")?;
+        
+        self.terminal.write_info(&format!("✓ Switched to {}", resolved_url))?;
+        self.terminal.write("\n")?;
+
+        // Fetch and display available models
+        self.terminal.write_info("📦 Fetching available models...")?;
+        
+        match self.backend_client.fetch_models().await {
+            Ok(models) => {
+                if models.is_empty() {
+                    self.terminal.write_info("⚠️  No models available on this endpoint")?;
+                } else {
+                    self.terminal.write_info(&format!("✓ Found {} model(s)", models.len()))?;
+                    self.terminal.write("\n")?;
+                    
+                    // Prompt user to select a model
+                    let selected_model = self.select_model_from_list(models).await?;
+                    self.model = selected_model.clone();
+                    self.conversation.model = Some(selected_model.clone());
+                    
+                    self.terminal.write("\n")?;
+                    self.terminal.write_info("🎉 Endpoint switch complete!")?;
+                    self.terminal.write(&format!("   Endpoint: {}", self.backend_url))?;
+                    self.terminal.write(&format!("   Model: {}", self.model))?;
+                }
+            }
+            Err(e) => {
+                self.terminal.write_error(&format!("❌ Failed to fetch models: {}", e))?;
+                self.terminal.write_info("⚠️  Endpoint switched, but could not fetch models")?;
+                self.terminal.write_info("   You may need to check if the endpoint is accessible")?;
+            }
+        }
+        
+        self.terminal.write("\n")?;
+        Ok(())
+    }
+
     /// Handle a special command
     async fn handle_command(&mut self, input: &str) -> Result<()> {
         let command = Command::parse(input);
@@ -837,6 +942,9 @@ impl CliApp {
             }
             Command::StartLocal => {
                 self.handle_start_local().await?;
+            }
+            Command::Switch(target) => {
+                self.handle_switch(&target).await?;
             }
             Command::Unknown(cmd) => {
                 self.terminal.write_error(&format!(

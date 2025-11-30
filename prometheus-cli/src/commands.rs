@@ -19,6 +19,8 @@ pub enum Command {
     UpdateCheck,
     /// Start local Ollama instance and switch to it
     StartLocal,
+    /// Switch to a different endpoint (local, URL, or saved endpoint name)
+    Switch(String),
     /// Unknown command
     Unknown(String),
 }
@@ -66,6 +68,18 @@ impl Command {
             return Command::Unknown(command.to_string());
         }
 
+        // Handle switch with argument
+        if command.to_lowercase().starts_with("switch") {
+            let parts: Vec<&str> = command.split_whitespace().collect();
+            if parts.len() > 1 {
+                // Join all parts after "switch" to handle URLs with spaces (though unlikely)
+                let target = parts[1..].join(" ");
+                return Command::Switch(target);
+            }
+            // If no argument provided, treat as unknown
+            return Command::Unknown(command.to_string());
+        }
+
         // Convert to lowercase for case-insensitive matching
         match command.to_lowercase().as_str() {
             "exit" => Command::Exit,
@@ -91,6 +105,7 @@ impl Command {
             Command::Update => "Update the CLI to the latest version",
             Command::UpdateCheck => "Check for available updates",
             Command::StartLocal => "Start local Ollama instance and switch to it",
+            Command::Switch(_) => "Switch to a different endpoint (local, URL, or saved name)",
             Command::Unknown(_) => "Unknown command",
         }
     }
@@ -107,6 +122,7 @@ impl Command {
             Command::Update => "update".to_string(),
             Command::UpdateCheck => "update --check".to_string(),
             Command::StartLocal => "start-local".to_string(),
+            Command::Switch(target) => format!("switch {}", target),
             Command::Unknown(cmd) => cmd.clone(),
         }
     }
@@ -126,10 +142,11 @@ pub fn display_help() -> String {
         Command::Update,
         Command::UpdateCheck,
         Command::StartLocal,
+        Command::Switch("local|<url>|<name>".to_string()),
     ];
 
     for cmd in commands {
-        help.push_str(&format!("  /{:<15} - {}\n", cmd.name(), cmd.description()));
+        help.push_str(&format!("  /{:<30} - {}\n", cmd.name(), cmd.description()));
     }
 
     help
@@ -358,5 +375,81 @@ mod tests {
         let help = display_help();
         assert!(help.contains("/start-local"));
         assert!(help.contains("Start local Ollama instance"));
+    }
+
+    #[test]
+    fn test_parse_switch_command() {
+        assert_eq!(
+            Command::parse("/switch local"),
+            Command::Switch("local".to_string())
+        );
+        assert_eq!(
+            Command::parse("/switch https://example.com:11434"),
+            Command::Switch("https://example.com:11434".to_string())
+        );
+        assert_eq!(
+            Command::parse("/switch my-server"),
+            Command::Switch("my-server".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_switch_case_insensitive() {
+        assert_eq!(
+            Command::parse("/SWITCH local"),
+            Command::Switch("local".to_string())
+        );
+        assert_eq!(
+            Command::parse("/Switch LOCAL"),
+            Command::Switch("LOCAL".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_switch_with_whitespace() {
+        assert_eq!(
+            Command::parse("  /switch local  "),
+            Command::Switch("local".to_string())
+        );
+        assert_eq!(
+            Command::parse("/switch   https://example.com  "),
+            Command::Switch("https://example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_switch_without_argument() {
+        // Switch without argument should be Unknown
+        assert_eq!(
+            Command::parse("/switch"),
+            Command::Unknown("switch".to_string())
+        );
+    }
+
+    #[test]
+    fn test_switch_command_description() {
+        assert_eq!(
+            Command::Switch("local".to_string()).description(),
+            "Switch to a different endpoint (local, URL, or saved name)"
+        );
+    }
+
+    #[test]
+    fn test_switch_command_name() {
+        assert_eq!(
+            Command::Switch("local".to_string()).name(),
+            "switch local"
+        );
+        assert_eq!(
+            Command::Switch("https://example.com".to_string()).name(),
+            "switch https://example.com"
+        );
+    }
+
+    #[test]
+    fn test_display_help_includes_switch() {
+        let help = display_help();
+        assert!(help.contains("/switch"));
+        assert!(help.contains("Switch to a different endpoint"));
     }
 }

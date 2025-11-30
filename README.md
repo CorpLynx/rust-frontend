@@ -91,12 +91,15 @@ prometheus-cli --url https://my-ollama-server.com:11434 --model codellama
 prometheus-cli --url http://localhost:11434 --model codellama
 
 # Available commands
-> /help         # Show all commands
-> /start-local  # Start local Ollama and switch to it
-> /new          # Start new conversation
-> /models       # List available models
-> /clear        # Clear screen
-> /exit         # Save and quit
+> /help                    # Show all commands
+> /start-local             # Start local Ollama and switch to it
+> /switch local            # Same as /start-local
+> /switch <url>            # Switch to a specific endpoint
+> /switch <name>           # Switch to a saved endpoint
+> /new                     # Start new conversation
+> /models                  # List available models
+> /clear                   # Clear screen
+> /exit                    # Save and quit
 ```
 
 #### Security Requirements
@@ -285,6 +288,27 @@ This command will:
 - Check if Ollama is running
 - Automatically start Ollama if it's not running
 - Show you available models to select from
+
+### Switching Between Endpoints
+
+Use the `/switch` command to easily change between different Ollama instances:
+
+```bash
+# Switch to local Ollama (same as /start-local)
+> /switch local
+
+# Switch to a specific URL
+> /switch https://my-server.ts.net:11434
+
+# Switch to a saved endpoint by name (from config.toml)
+> /switch my-remote-server
+```
+
+The `/switch` command will:
+- Validate the URL
+- Connect to the new endpoint
+- Fetch available models
+- Let you select a model to use
 
 ### Connection Issues
 
