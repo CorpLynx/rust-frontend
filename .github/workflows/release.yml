@@ -3,153 +3,221 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   create-release:
     name: Create Release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
       version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Get version from tag
         id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref }}
-          release_name: Prometheus CLI ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Prometheus ${{ steps.get_version.outputs.version }}
           draft: false
           prerelease: false
           body: |
-            ## Prometheus CLI ${{ steps.get_version.outputs.version }}
+            ## Prometheus ${{ steps.get_version.outputs.version }}
 
             ### Installation
 
-            **Quick Install (macOS):**
+            **Linux:**
             ```bash
-            curl -sSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/prometheus-linux-installer.sh | bash
             ```
 
-            **Or download the binary for your platform below.**
+            **macOS:**
+            ```bash
+            curl -sSL https://github.com/${{ github.repository }}/releases/download/${{ steps.get_version.outputs.version }}/prometheus-macos-installer.sh | bash
+            ```
+
+            **Windows:**
+            Download and run `prometheus-windows-installer.exe`
 
             ### What's Changed
-            
-            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/docs/CHANGELOG.md) for details.
+            - See commit history for details
 
-            ### Checksums
-            
-            SHA256 checksums are provided for each binary.
-
-  build-macos:
-    name: Build macOS
-    needs: create-release
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-apple-darwin
-          - aarch64-apple-darwin
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
-
-      - name: Build
-        run: |
-          cargo build --release -p prometheus-cli --target ${{ matrix.target }}
-
-      - name: Create archive
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar czf prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz prometheus-cli
-          shasum -a 256 prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./target/${{ matrix.target }}/release/prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_name: prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload Checksum
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./target/${{ matrix.target }}/release/prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_name: prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_content_type: text/plain
+            ### Full Changelog
+            https://github.com/${{ github.repository }}/compare/...
 
   build-linux:
-    name: Build Linux
+    name: Build Linux Installer
     needs: create-release
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target:
-          - x86_64-unknown-linux-gnu
-          - aarch64-unknown-linux-gnu
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
         with:
-          toolchain: stable
-          target: ${{ matrix.target }}
-          override: true
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Install cross
-        run: cargo install cross
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Build
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build prometheus-cli
+        run: cargo build --release -p prometheus-cli
+
+      - name: Create Linux installer package
         run: |
-          cross build --release -p prometheus-cli --target ${{ matrix.target }}
+          mkdir -p dist/linux
+          cp target/release/prometheus-cli dist/linux/
+          cp -r docs dist/linux/
+          cp README.md dist/linux/
+          cp config.toml dist/linux/
 
-      - name: Create archive
+          # Create installer script from template with version substitution
+          sed "s|__VERSION__|${{ needs.create-release.outputs.version }}|g" \
+            scripts/installers/linux-installer-template.sh > dist/prometheus-linux-installer.sh
+
+          # Append tarball to installer
+          cd dist/linux
+          tar czf - prometheus-cli docs config.toml README.md >> ../prometheus-linux-installer.sh
+          cd ../..
+
+          chmod +x dist/prometheus-linux-installer.sh
+
+      - name: Upload Linux installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release.outputs.version }}
+          files: ./dist/prometheus-linux-installer.sh
+
+  build-macos:
+    name: Build macOS Installer
+    needs: create-release
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build prometheus-cli
+        run: cargo build --release -p prometheus-cli
+
+      - name: Create macOS installer package
         run: |
-          cd target/${{ matrix.target }}/release
-          tar czf prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz prometheus-cli
-          sha256sum prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz > prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
+          mkdir -p dist/macos
+          cp target/release/prometheus-cli dist/macos/
+          cp -r docs dist/macos/
+          cp README.md dist/macos/
+          cp config.toml dist/macos/
 
-      - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./target/${{ matrix.target }}/release/prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_name: prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
+          # Create installer script from template with version substitution
+          sed "s|__VERSION__|${{ needs.create-release.outputs.version }}|g" \
+            scripts/installers/macos-installer-template.sh > dist/prometheus-macos-installer.sh
 
-      - name: Upload Checksum
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Append tarball to installer
+          cd dist/macos
+          tar czf - prometheus-cli docs config.toml README.md >> ../prometheus-macos-installer.sh
+          cd ../..
+
+          chmod +x dist/prometheus-macos-installer.sh
+
+      - name: Upload macOS installer
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./target/${{ matrix.target }}/release/prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_name: prometheus-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz.sha256
-          asset_content_type: text/plain
+          tag_name: ${{ needs.create-release.outputs.version }}
+          files: ./dist/prometheus-macos-installer.sh
+
+  build-windows:
+    name: Build Windows Installer
+    needs: create-release
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build prometheus-cli
+        run: cargo build --release -p prometheus-cli
+
+      - name: Install NSIS
+        run: choco install nsis -y
+
+      - name: Create Windows installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\windows
+          Copy-Item target\release\prometheus-cli.exe dist\windows\
+          Copy-Item README.md dist\windows\
+          Copy-Item config.toml dist\windows\
+          Copy-Item -Recurse docs dist\windows\
+
+          # Create NSIS installer script from template with version substitution
+          $version = "${{ needs.create-release.outputs.version }}"
+          $template = Get-Content scripts\installers\windows-installer-template.nsi -Raw
+          $installer = $template -replace '__VERSION__', $version
+          $installer | Out-File -FilePath dist\windows\installer.nsi -Encoding ASCII
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: |
+          cd dist\windows
+          & "C:\Program Files (x86)\NSIS\makensis.exe" installer.nsi
+          Move-Item prometheus-windows-installer.exe ..\
+
+      - name: Upload Windows installer
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.create-release.outputs.version }}
+          files: ./dist/prometheus-windows-installer.exe
