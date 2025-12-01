@@ -97,12 +97,14 @@ jobs:
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build prometheus-cli
-        run: cargo build --release -p prometheus-cli
+        run: |
+          cd prometheus-cli
+          cargo build --release
 
       - name: Create Linux installer package
         run: |
           mkdir -p dist/linux
-          cp target/release/prometheus-cli dist/linux/
+          cp prometheus-cli/target/release/prometheus-cli dist/linux/
           cp -r docs dist/linux/
           cp README.md dist/linux/
           cp config.toml dist/linux/
@@ -123,6 +125,7 @@ jobs:
         with:
           tag_name: ${{ needs.create-release.outputs.version }}
           files: ./dist/prometheus-linux-installer.sh
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-macos:
     name: Build macOS Installer
@@ -145,12 +148,14 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build prometheus-cli
-        run: cargo build --release -p prometheus-cli
+        run: |
+          cd prometheus-cli
+          cargo build --release
 
       - name: Create macOS installer package
         run: |
           mkdir -p dist/macos
-          cp target/release/prometheus-cli dist/macos/
+          cp prometheus-cli/target/release/prometheus-cli dist/macos/
           cp -r docs dist/macos/
           cp README.md dist/macos/
           cp config.toml dist/macos/
@@ -171,6 +176,7 @@ jobs:
         with:
           tag_name: ${{ needs.create-release.outputs.version }}
           files: ./dist/prometheus-macos-installer.sh
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-windows:
     name: Build Windows Installer
@@ -193,7 +199,9 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Build prometheus-cli
-        run: cargo build --release -p prometheus-cli
+        run: |
+          cd prometheus-cli
+          cargo build --release
 
       - name: Install NSIS
         run: choco install nsis -y
@@ -202,7 +210,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist\windows
-          Copy-Item target\release\prometheus-cli.exe dist\windows\
+          Copy-Item prometheus-cli\target\release\prometheus-cli.exe dist\windows\
           Copy-Item README.md dist\windows\
           Copy-Item config.toml dist\windows\
           Copy-Item -Recurse docs dist\windows\
@@ -225,3 +233,4 @@ jobs:
         with:
           tag_name: ${{ needs.create-release.outputs.version }}
           files: ./dist/prometheus-windows-installer.exe
+          token: ${{ secrets.GITHUB_TOKEN }}
