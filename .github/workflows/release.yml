@@ -15,6 +15,10 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
 
+permissions:
+  contents: write
+  packages: read
+
 jobs:
   create-release:
     name: Create Release
@@ -34,8 +38,6 @@ jobs:
       - name: Create Release
         id: create_release
         uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_RELEASE_PAT }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: Prometheus ${{ steps.get_version.outputs.version }}
